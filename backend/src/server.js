@@ -124,7 +124,16 @@ app.get('/api/leaderboard', async (req, res) => {
             .sort({ totalEarned: -1 })
             .limit(10)
             .select('address name bio skills totalEarned completedJobs');
-        res.json(topFreelancers);
+
+        const leadersWithRatings = await Promise.all(topFreelancers.map(async (leader) => {
+            const jobs = await JobMetadata.find({ freelancer: leader.address, rating: { $gt: 0 } });
+            const avgRating = jobs.length > 0
+                ? jobs.reduce((acc, j) => acc + j.rating, 0) / jobs.length
+                : 0;
+            return { ...leader.toObject(), avgRating };
+        }));
+
+        res.json(leadersWithRatings);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

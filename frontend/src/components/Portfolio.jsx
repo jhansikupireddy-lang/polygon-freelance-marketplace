@@ -20,7 +20,13 @@ function Portfolio({ address, onBack }) {
     if (!data?.profile?.address) return <div style={{ textAlign: 'center', padding: '100px' }}>Profile not found.</div>;
 
     const { profile, jobs } = data;
-    const completedJobs = jobs.filter(j => j.status === 'Completed' || j.status === 2); // Status 2 is Completed on-chain
+    const completedJobs = jobs.filter(j => j.status === 'Completed' || j.status === 2 || j.status === 4); // Status 4 is Completed in contract v1.1
+
+    // Calculate average rating
+    const ratedJobs = completedJobs.filter(j => j.rating > 0);
+    const avgRating = ratedJobs.length > 0
+        ? (ratedJobs.reduce((acc, j) => acc + j.rating, 0) / ratedJobs.length).toFixed(1)
+        : null;
 
     return (
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -38,7 +44,21 @@ function Portfolio({ address, onBack }) {
                             <User size={48} color="#fff" />
                         </div>
                         <h2 style={{ fontSize: '1.8rem', marginBottom: '8px' }}>{profile.name || 'Anonymous Creator'}</h2>
-                        <p className="badge" style={{ marginBottom: '20px' }}>{profile.skills || 'General Creator'}</p>
+
+                        {avgRating && (
+                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px', color: '#fbbf24', marginBottom: '15px' }}>
+                                {'★'.repeat(Math.round(avgRating))}
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginLeft: '5px' }}>({avgRating})</span>
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center', marginBottom: '20px' }}>
+                            {profile.skills?.split(',').map((skill, idx) => (
+                                <span key={idx} className="badge" style={{ border: '1px solid var(--primary)', color: 'var(--primary)', background: 'rgba(138, 43, 226, 0.05)', fontSize: '0.75rem' }}>
+                                    {skill.trim()}
+                                </span>
+                            )) || <span className="badge">General Creator</span>}
+                        </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '30px' }}>
                             <div className="glass-card" style={{ padding: '15px' }}>
@@ -56,9 +76,9 @@ function Portfolio({ address, onBack }) {
                         </p>
 
                         <div style={{ display: 'flex', justifyContent: 'center', gap: '20px' }}>
-                            <Globe size={20} className="btn-nav" style={{ cursor: 'pointer' }} />
-                            <Github size={20} className="btn-nav" style={{ cursor: 'pointer' }} />
-                            <Twitter size={20} className="btn-nav" style={{ cursor: 'pointer' }} />
+                            <a href="#" className="btn-nav" style={{ color: 'inherit' }} title="Website"><Globe size={20} /></a>
+                            <a href="#" className="btn-nav" style={{ color: 'inherit' }} title="GitHub"><Github size={20} /></a>
+                            <a href="#" className="btn-nav" style={{ color: 'inherit' }} title="Twitter"><Twitter size={20} /></a>
                         </div>
                     </div>
 
@@ -79,9 +99,16 @@ function Portfolio({ address, onBack }) {
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                         {completedJobs.length === 0 ? (
-                            <div className="glass-card" style={{ textAlign: 'center', padding: '80px' }}>
-                                <Briefcase size={48} style={{ opacity: 0.1, marginBottom: '20px' }} />
-                                <p style={{ color: 'var(--text-muted)' }}>No completed jobs found for this creator yet.</p>
+                            <div className="glass-card" style={{ textAlign: 'center', padding: '100px 40px', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--glass-border)' }}>
+                                <motion.div
+                                    initial={{ scale: 0.8, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    transition={{ duration: 0.5 }}
+                                >
+                                    <Briefcase size={64} style={{ opacity: 0.1, marginBottom: '24px', color: 'var(--primary)' }} />
+                                    <h3 style={{ marginBottom: '10px', opacity: 0.5 }}>Future Success in Progress</h3>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>This creator hasn't finalized any contracts yet. Stake on their potential today!</p>
+                                </motion.div>
                             </div>
                         ) : (
                             completedJobs.map((job, i) => (
@@ -110,12 +137,23 @@ function Portfolio({ address, onBack }) {
                                         </p>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.8rem', color: 'var(--primary)', fontWeight: 600 }}>
-                                                <Award size={14} /> NFT Minted
+                                                <Award size={14} /> NFT Proof-of-Work
                                             </div>
                                             <a href={`https://polygonscan.com/address/${CONTRACT_ADDRESS}`} target="_blank" rel="noreferrer" style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                Verify on Chain <ExternalLink size={12} />
+                                                Check Ledger <ExternalLink size={12} />
                                             </a>
                                         </div>
+
+                                        {job.review && (
+                                            <div style={{ marginTop: '15px', padding: '12px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', borderLeft: '3px solid #fbbf24' }}>
+                                                <div style={{ color: '#fbbf24', fontSize: '0.8rem', marginBottom: '4px' }}>
+                                                    {'★'.repeat(job.rating)} Verified Review
+                                                </div>
+                                                <p style={{ fontSize: '0.85rem', fontStyle: 'italic', color: 'var(--text)' }}>
+                                                    "{job.review}"
+                                                </p>
+                                            </div>
+                                        )}
                                     </div>
                                 </motion.div>
                             ))

@@ -34,6 +34,7 @@ function Leaderboard() {
                             <th style={{ padding: '20px', textAlign: 'left', color: 'var(--text-muted)' }}>RANK</th>
                             <th style={{ padding: '20px', textAlign: 'left', color: 'var(--text-muted)' }}>CREATOR</th>
                             <th style={{ padding: '20px', textAlign: 'left', color: 'var(--text-muted)' }}>SPECIALIZATION</th>
+                            <th style={{ padding: '20px', textAlign: 'left', color: 'var(--text-muted)' }}>REPUTATION</th>
                             <th style={{ padding: '20px', textAlign: 'right', color: 'var(--text-muted)' }}>STRIKE RATE</th>
                             <th style={{ padding: '20px', textAlign: 'right', color: 'var(--text-muted)' }}>TOTAL EARNED</th>
                         </tr>
@@ -41,7 +42,7 @@ function Leaderboard() {
                     <tbody>
                         {leaders.length === 0 ? (
                             <tr>
-                                <td colSpan="5" style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                <td colSpan="6" style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
                                     No records found. Be the first to reach the top!
                                 </td>
                             </tr>
@@ -79,7 +80,21 @@ function Leaderboard() {
                                         </div>
                                     </td>
                                     <td style={{ padding: '20px' }}>
-                                        <span className="badge">{leader.skills || 'Undefined'}</span>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                            {leader.skills?.split(',').slice(0, 2).map((s, i) => (
+                                                <span key={i} className="badge" style={{ fontSize: '0.7rem' }}>{s.trim()}</span>
+                                            )) || <span className="badge" style={{ fontSize: '0.7rem' }}>Explorer</span>}
+                                        </div>
+                                    </td>
+                                    <td style={{ padding: '20px' }}>
+                                        {leader.avgRating > 0 ? (
+                                            <div style={{ color: '#fbbf24', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                {'★'.repeat(Math.round(leader.avgRating))}
+                                                <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>({leader.avgRating.toFixed(1)})</span>
+                                            </div>
+                                        ) : (
+                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No ratings yet</span>
+                                        )}
                                     </td>
                                     <td style={{ padding: '20px', textAlign: 'right' }}>
                                         <div style={{ fontWeight: 600 }}>{leader.completedJobs} Jobs</div>

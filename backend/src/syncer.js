@@ -93,5 +93,26 @@ export async function startSyncer() {
         }
     });
 
+    // Watch for ReviewSubmitted
+    client.watchEvent({
+        address: CONTRACT_ADDRESS,
+        event: parseAbiItem('event ReviewSubmitted(uint256 indexed jobId, address indexed reviewer, uint8 rating, string comment)'),
+        onLogs: async (logs) => {
+            for (const log of logs) {
+                try {
+                    const { jobId, rating, comment } = log.args;
+                    console.log(`New Review for Job ${jobId}: ${rating} stars`);
+                    await JobMetadata.findOneAndUpdate(
+                        { jobId: Number(jobId) },
+                        { rating: Number(rating), review: comment },
+                        { upsert: true }
+                    );
+                } catch (error) {
+                    console.error('Error handling ReviewSubmitted:', error);
+                }
+            }
+        }
+    });
+
     console.log(`Watching events for contract at ${CONTRACT_ADDRESS}`);
 }
