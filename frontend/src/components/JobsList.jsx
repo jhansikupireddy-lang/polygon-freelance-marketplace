@@ -14,6 +14,8 @@ const statusLabels = ['Created', 'Accepted', 'Ongoing', 'Disputed', 'Completed',
 function JobsList({ onUserClick }) {
     const { address } = useAccount();
     const [filter, setFilter] = React.useState('All');
+    const [searchQuery, setSearchQuery] = React.useState('');
+    const [minBudget, setMinBudget] = React.useState('');
     const { data: jobCount } = useReadContract({
         address: CONTRACT_ADDRESS,
         abi: FreelanceEscrowABI.abi,
@@ -24,21 +26,36 @@ function JobsList({ onUserClick }) {
 
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-                <h1>Manage Jobs</h1>
-                <div style={{ display: 'flex', gap: '15px' }}>
+            <div className="glass-card" style={{ marginBottom: '30px', padding: '20px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 150px 150px', gap: '20px' }}>
+                    <input
+                        type="text"
+                        placeholder="Search jobs by title or description..."
+                        className="input-field"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        style={{ margin: 0 }}
+                    />
                     <select
                         className="input-field"
-                        style={{ width: '150px', margin: 0 }}
+                        style={{ margin: 0 }}
                         value={filter}
                         onChange={(e) => setFilter(e.target.value)}
                     >
-                        <option>All</option>
+                        <option>All Categories</option>
                         <option>Development</option>
                         <option>Design</option>
                         <option>Marketing</option>
                         <option>Writing</option>
                     </select>
+                    <input
+                        type="number"
+                        placeholder="Min MATIC"
+                        className="input-field"
+                        value={minBudget}
+                        onChange={(e) => setMinBudget(e.target.value)}
+                        style={{ margin: 0 }}
+                    />
                 </div>
             </div>
 
@@ -57,7 +74,13 @@ function JobsList({ onUserClick }) {
                             animate={{ opacity: 1, scale: 1 }}
                             transition={{ delay: i * 0.1 }}
                         >
-                            <JobCard jobId={i + 1} categoryFilter={filter} onUserClick={onUserClick} />
+                            <JobCard
+                                jobId={i + 1}
+                                categoryFilter={filter}
+                                searchQuery={searchQuery}
+                                minBudget={minBudget}
+                                onUserClick={onUserClick}
+                            />
                         </motion.div>
                     ))
                 )}
@@ -66,7 +89,7 @@ function JobsList({ onUserClick }) {
     );
 }
 
-function JobCard({ jobId, categoryFilter, onUserClick }) {
+function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick }) {
     const { address } = useAccount();
     const [metadata, setMetadata] = React.useState(null);
     const { data: job, refetch } = useReadContract({
@@ -103,10 +126,23 @@ function JobCard({ jobId, categoryFilter, onUserClick }) {
 
     if (!job) return null;
 
-    const [id, client, freelancer, amount, freelancerStake, status, resultUri, paid] = job;
+    const [id, client, freelancer, amount, freelancerStake, totalPaidOut, status, resultUri, paid, milestoneCount] = job;
+
+    const { data: review } = useReadContract({
+        address: CONTRACT_ADDRESS,
+        abi: FreelanceEscrowABI.abi,
+        functionName: 'reviews',
+        args: [BigInt(jobId)],
+    });
 
     // Filter logic
-    if (categoryFilter !== 'All' && metadata?.category !== categoryFilter) {
+    const matchesCategory = categoryFilter === 'All Categories' || categoryFilter === 'All' || metadata?.category === categoryFilter;
+    const matchesSearch = !searchQuery ||
+        metadata?.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        metadata?.description?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesBudget = !minBudget || Number(formatEther(amount)) >= Number(minBudget);
+
+    if (!matchesCategory || !matchesSearch || !matchesBudget) {
         return null;
     }
 
@@ -164,6 +200,27 @@ function JobCard({ jobId, categoryFilter, onUserClick }) {
         });
     };
 
+    const handleReleaseMilestone = (mId) => {
+        writeContract({
+            address: CONTRACT_ADDRESS,
+            abi: FreelanceEscrowABI.abi,
+            functionName: 'releaseMilestone',
+            args: [BigInt(jobId), BigInt(mId)],
+        });
+    };
+
+    const handleReview = () => {
+        const rating = prompt('Enter rating (1-5):');
+        const comment = prompt('Enter your feedback:');
+        if (!rating || !comment) return;
+        writeContract({
+            address: CONTRACT_ADDRESS,
+            abi: FreelanceEscrowABI.abi,
+            functionName: 'submitReview',
+            args: [BigInt(jobId), parseInt(rating), comment],
+        });
+    };
+
     return (
         <div className="glass-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
@@ -192,10 +249,31 @@ function JobCard({ jobId, categoryFilter, onUserClick }) {
                     href={resultUri}
                     target="_blank"
                     rel="noreferrer"
-                    style={{ display: 'flex', alignItems: 'center', gap: '5px', color: 'var(--primary)', marginBottom: '20px', textDecoration: 'none', fontSize: '0.9rem' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '5px', color: 'var(--primary)', marginBottom: '15px', textDecoration: 'none', fontSize: '0.9rem' }}
                 >
                     <ExternalLink size={14} /> View Work Submission
                 </a>
+            )}
+
+            {Number(milestoneCount) > 0 && (
+                <div style={{ marginBottom: '20px', padding: '15px', background: 'rgba(0,0,0,0.05)', borderRadius: '8px' }}>
+                    <h4 style={{ fontSize: '0.8rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '10px' }}>Milestones</h4>
+                    {Array.from({ length: Number(milestoneCount) }).map((_, idx) => (
+                        <MilestoneRow key={idx} jobId={jobId} mId={idx} isClient={isClient} onRelease={handleReleaseMilestone} />
+                    ))}
+                    <div style={{ fontSize: '0.8rem', marginTop: '10px', fontWeight: '600' }}>
+                        Paid: {formatEther(totalPaidOut)} / {formatEther(amount)} MATIC
+                    </div>
+                </div>
+            )}
+
+            {review && review[2] !== '0x0000000000000000000000000000000000000000' && (
+                <div style={{ padding: '15px', borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '15px' }}>
+                    <div style={{ display: 'flex', gap: '5px', color: '#fbbf24', marginBottom: '5px' }}>
+                        {'★'.repeat(review[0])}{'☆'.repeat(5 - review[0])}
+                    </div>
+                    <p style={{ fontSize: '0.85rem', fontStyle: 'italic' }}>"{review[1]}"</p>
+                </div>
             )}
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
@@ -231,11 +309,50 @@ function JobCard({ jobId, categoryFilter, onUserClick }) {
                 )}
             </div>
 
+            {isClient && status === 4 && (
+                <button onClick={handleReview} className="btn-secondary" style={{ width: '100%', marginTop: '15px' }}>
+                    Leave a Review
+                </button>
+            )}
+
             {status === 4 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#10b981', marginTop: '10px' }}>
                     <CheckCircle size={18} />
                     <span>Success: Funds & Stake Distributed</span>
                 </div>
+            )}
+        </div>
+    );
+}
+
+function MilestoneRow({ jobId, mId, isClient, onRelease }) {
+    const { data: milestone } = useReadContract({
+        address: CONTRACT_ADDRESS,
+        abi: FreelanceEscrowABI.abi,
+        functionName: 'jobMilestones',
+        args: [BigInt(jobId), BigInt(mId)],
+    });
+
+    if (!milestone) return null;
+    const [amt, desc, isReleased] = milestone;
+
+    return (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem', marginBottom: '8px' }}>
+            <span>{desc} ({formatEther(amt)} MATIC)</span>
+            {isReleased ? (
+                <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <CheckCircle size={14} /> Released
+                </span>
+            ) : (
+                isClient && (
+                    <button
+                        onClick={() => onRelease(mId)}
+                        className="btn-secondary"
+                        style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                    >
+                        Release
+                    </button>
+                )
             )}
         </div>
     );

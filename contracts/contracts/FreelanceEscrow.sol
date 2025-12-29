@@ -13,24 +13,43 @@ contract FreelanceEscrow is ERC721URIStorage, Ownable {
 
     enum JobStatus { Created, Accepted, Ongoing, Disputed, Completed, Cancelled }
 
+    struct Milestone {
+        uint256 amount;
+        string description;
+        bool isReleased;
+    }
+
+    struct Review {
+        uint8 rating; // 1-5
+        string comment;
+        address reviewer;
+    }
+
     struct Job {
         uint256 id;
         address client;
         address freelancer;
         uint256 amount;
         uint256 freelancerStake;
+        uint256 totalPaidOut;
         JobStatus status;
         string resultUri;
         bool paid;
+        uint256 milestoneCount;
     }
 
     mapping(uint256 => Job) public jobs;
+    mapping(uint256 => mapping(uint256 => Milestone)) public jobMilestones;
+    mapping(uint256 => Review) public reviews;
     uint256 public jobCount;
 
     event JobCreated(uint256 indexed jobId, address indexed client, address indexed freelancer, uint256 amount);
     event JobAccepted(uint256 indexed jobId, address indexed freelancer, uint256 stake);
     event WorkSubmitted(uint256 indexed jobId, string resultUri);
     event FundsReleased(uint256 indexed jobId, address indexed freelancer, uint256 amount, uint256 nftId);
+    event MilestoneCreated(uint256 indexed jobId, uint256 milestoneId, uint256 amount, string description);
+    event MilestoneReleased(uint256 indexed jobId, uint256 milestoneId, uint256 amount);
+    event ReviewSubmitted(uint256 indexed jobId, address indexed reviewer, uint8 rating, string comment);
     event JobCancelled(uint256 indexed jobId);
     event JobDisputed(uint256 indexed jobId);
 
@@ -55,12 +74,73 @@ contract FreelanceEscrow is ERC721URIStorage, Ownable {
             freelancer: freelancer,
             amount: msg.value,
             freelancerStake: 0,
+            totalPaidOut: 0,
             status: JobStatus.Created,
             resultUri: _initialMetadataUri,
-            paid: false
+            paid: false,
+            milestoneCount: 0
         });
 
         emit JobCreated(jobCount, msg.sender, freelancer, msg.value);
+    }
+
+    function createJobWithMilestones(
+        address freelancer, 
+        string memory _initialMetadataUri, 
+        uint256[] memory milestoneAmounts, 
+        string[] memory milestoneDescriptions
+    ) external payable {
+        require(milestoneAmounts.length == milestoneDescriptions.length, "Mismatched milestones");
+        require(msg.value > 0, "Amount must be greater than 0");
+        
+        uint256 totalMilestoneAmount = 0;
+        for(uint256 i = 0; i < milestoneAmounts.length; i++) {
+            totalMilestoneAmount += milestoneAmounts[i];
+        }
+        require(totalMilestoneAmount == msg.value, "Total milestones must equal value");
+
+        jobCount++;
+        jobs[jobCount] = Job({
+            id: jobCount,
+            client: msg.sender,
+            freelancer: freelancer,
+            amount: msg.value,
+            freelancerStake: 0,
+            totalPaidOut: 0,
+            status: JobStatus.Created,
+            resultUri: _initialMetadataUri,
+            paid: false,
+            milestoneCount: milestoneAmounts.length
+        });
+
+        for(uint256 i = 0; i < milestoneAmounts.length; i++) {
+            jobMilestones[jobCount][i] = Milestone({
+                amount: milestoneAmounts[i],
+                description: milestoneDescriptions[i],
+                isReleased: false
+            });
+            emit MilestoneCreated(jobCount, i, milestoneAmounts[i], milestoneDescriptions[i]);
+        }
+
+        emit JobCreated(jobCount, msg.sender, freelancer, msg.value);
+    }
+
+    function releaseMilestone(uint256 jobId, uint256 milestoneId) external {
+        Job storage job = jobs[jobId];
+        require(msg.sender == job.client, "Only client can release milestones");
+        require(milestoneId < job.milestoneCount, "Invalid milestone ID");
+        
+        Milestone storage milestone = jobMilestones[jobId][milestoneId];
+        require(!milestone.isReleased, "Already released");
+        require(!job.paid, "Job already finalized");
+
+        milestone.isReleased = true;
+        job.totalPaidOut += milestone.amount;
+
+        (bool success, ) = payable(job.freelancer).call{value: milestone.amount}("");
+        require(success, "Transfer failed");
+
+        emit MilestoneReleased(jobId, milestoneId, milestone.amount);
     }
 
     function acceptJob(uint256 jobId) external payable {
@@ -97,10 +177,13 @@ contract FreelanceEscrow is ERC721URIStorage, Ownable {
         job.paid = true;
         job.status = JobStatus.Completed;
 
-        // Transfer funds + stake back to freelancer
-        uint256 totalPayout = job.amount + job.freelancerStake;
-        (bool success, ) = payable(job.freelancer).call{value: totalPayout}("");
-        require(success, "Transfer failed");
+        uint256 remainingAmount = job.amount - job.totalPaidOut;
+        uint256 totalPayout = remainingAmount + job.freelancerStake;
+        
+        if (totalPayout > 0) {
+            (bool success, ) = payable(job.freelancer).call{value: totalPayout}("");
+            require(success, "Transfer failed");
+        }
 
         // Mint NFT for freelancer
         uint256 tokenId = _nextTokenId++;
@@ -108,6 +191,22 @@ contract FreelanceEscrow is ERC721URIStorage, Ownable {
         _setTokenURI(tokenId, job.resultUri);
 
         emit FundsReleased(jobId, job.freelancer, totalPayout, tokenId);
+    }
+
+    function submitReview(uint256 jobId, uint8 rating, string memory comment) external {
+        Job storage job = jobs[jobId];
+        require(msg.sender == job.client, "Only client can review");
+        require(job.status == JobStatus.Completed, "Job not completed");
+        require(rating >= 1 && rating <= 5, "Rating 1-5");
+        require(reviews[jobId].reviewer == address(0), "Review already submitted");
+
+        reviews[jobId] = Review({
+            rating: rating,
+            comment: comment,
+            reviewer: msg.sender
+        });
+
+        emit ReviewSubmitted(jobId, msg.sender, rating, comment);
     }
 
     function dispute(uint256 jobId) external {

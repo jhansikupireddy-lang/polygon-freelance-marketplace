@@ -7,7 +7,7 @@ import { api } from '../services/api';
 
 function Dashboard() {
     const { address, isConnected } = useAccount();
-    const [profile, setProfile] = React.useState({ name: '', bio: '', skills: '' });
+    const [profile, setProfile] = React.useState({ name: '', bio: '', skills: '', category: 'Development' });
     const [isSaving, setIsSaving] = React.useState(false);
     const { signMessageAsync } = useSignMessage();
 
@@ -135,7 +135,7 @@ function Dashboard() {
                         <h3 style={{ margin: 0 }}>Professional Profile</h3>
                     </div>
                     <form onSubmit={handleSaveProfile}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '20px' }}>
                             <div>
                                 <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600' }}>DISPLAY NAME</label>
                                 <input
@@ -147,13 +147,26 @@ function Dashboard() {
                                 />
                             </div>
                             <div>
-                                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600' }}>SPECIALIZATION</label>
+                                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600' }}>BASE CATEGORY</label>
+                                <select
+                                    className="input-field"
+                                    value={profile.category}
+                                    onChange={e => setProfile({ ...profile, category: e.target.value })}
+                                >
+                                    <option>Development</option>
+                                    <option>Design</option>
+                                    <option>Marketing</option>
+                                    <option>Writing</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600' }}>SKILLS (comma separated)</label>
                                 <input
                                     type="text"
                                     className="input-field"
                                     value={profile.skills}
                                     onChange={e => setProfile({ ...profile, skills: e.target.value })}
-                                    placeholder="e.g. Fullstack Developer"
+                                    placeholder="React, Solidity, UX"
                                 />
                             </div>
                         </div>

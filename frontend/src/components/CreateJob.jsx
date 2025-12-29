@@ -13,6 +13,7 @@ function CreateJob({ onJobCreated }) {
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [category, setCategory] = useState('Development');
+    const [milestones, setMilestones] = useState([{ amount: '', description: '' }]);
 
     const { data: hash, writeContract, isPending, error } = useWriteContract();
     const { data: jobCount } = useReadContract({
@@ -25,17 +26,41 @@ function CreateJob({ onJobCreated }) {
         hash,
     });
 
+    const handleAddMilestone = () => {
+        setMilestones([...milestones, { amount: '', description: '' }]);
+    };
+
+    const handleMilestoneChange = (index, field, value) => {
+        const newMilestones = [...milestones];
+        newMilestones[index][field] = value;
+        setMilestones(newMilestones);
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!freelancer || !amount || !title) return;
 
-        writeContract({
-            address: CONTRACT_ADDRESS,
-            abi: FreelanceEscrowABI.abi,
-            functionName: 'createJob',
-            args: [freelancer, description], // description here is used as initial metadata URI on-chain
-            value: parseEther(amount),
-        });
+        if (milestones.length > 1 || (milestones[0].amount && milestones[0].description)) {
+            // Milestone flow
+            const milestoneAmounts = milestones.map(m => parseEther(m.amount));
+            const milestoneDescs = milestones.map(m => m.description);
+            writeContract({
+                address: CONTRACT_ADDRESS,
+                abi: FreelanceEscrowABI.abi,
+                functionName: 'createJobWithMilestones',
+                args: [freelancer, description, milestoneAmounts, milestoneDescs],
+                value: parseEther(amount),
+            });
+        } else {
+            // Standard flow
+            writeContract({
+                address: CONTRACT_ADDRESS,
+                abi: FreelanceEscrowABI.abi,
+                functionName: 'createJob',
+                args: [freelancer, description],
+                value: parseEther(amount),
+            });
+        }
     };
 
     React.useEffect(() => {
@@ -117,7 +142,39 @@ function CreateJob({ onJobCreated }) {
                 </div>
 
                 <div style={{ marginBottom: '20px' }}>
-                    <label>Detailed Description</label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <label style={{ margin: 0 }}>Milestones (Optional)</label>
+                        <button type="button" onClick={handleAddMilestone} className="btn-secondary" style={{ padding: '4px 10px', fontSize: '0.8rem' }}>
+                            + Add Milestone
+                        </button>
+                    </div>
+                    {milestones.map((m, index) => (
+                        <div key={index} style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '10px', marginBottom: '10px' }}>
+                            <input
+                                type="number"
+                                placeholder="Amount"
+                                className="input-field"
+                                style={{ margin: 0 }}
+                                value={m.amount}
+                                onChange={(e) => handleMilestoneChange(index, 'amount', e.target.value)}
+                            />
+                            <input
+                                type="text"
+                                placeholder="Description"
+                                className="input-field"
+                                style={{ margin: 0 }}
+                                value={m.description}
+                                onChange={(e) => handleMilestoneChange(index, 'description', e.target.value)}
+                            />
+                        </div>
+                    ))}
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        If milestones are provided, they must sum up to the total budget.
+                    </p>
+                </div>
+
+                <div style={{ marginBottom: '20px' }}>
+                    <label>Detailed Description (IPFS Metadata)</label>
                     <textarea
                         placeholder="Provide detailed requirements for the freelancer..."
                         className="input-field"
