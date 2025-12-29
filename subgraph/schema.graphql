@@ -1,0 +1,19 @@
+type Job @entity {
+  id: ID!
+  jobId: BigInt!
+  client: Bytes! # address
+  freelancer: Bytes! # address
+  amount: BigInt!
+  status: Int!
+  resultUri: String
+  nftId: BigInt
+  paid: Boolean!
+  createdAt: BigInt!
+  updatedAt: BigInt!
+}
+
+type User @entity {
+  id: ID! # address
+  jobsAsClient: [Job!]! @derivedFrom(field: "client")
+  jobsAsFreelancer: [Job!]! @derivedFrom(field: "freelancer")
+}
