@@ -9,7 +9,7 @@ import { Profile } from './models/Profile.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const CONTRACT_ADDRESS = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+const CONTRACT_ADDRESS = '0x25F6C8ed995C811E6c0ADb1D66A60830E8115e9A';
 
 // Load ABI
 const abiPath = path.join(__dirname, 'contracts', 'FreelanceEscrow.json');

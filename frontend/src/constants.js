@@ -1,1 +1,7 @@
 export const CONTRACT_ADDRESS = '0x25F6C8ed995C811E6c0ADb1D66A60830E8115e9A';
+
+export const SUPPORTED_TOKENS = [
+    { symbol: 'MATIC', address: '0x0000000000000000000000000000000000000000', decimals: 18 },
+    { symbol: 'USDC', address: '0x41e94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582', decimals: 6 }, // Amoy PoS USDC
+    { symbol: 'DAI', address: '0x001B68356E62095104ee17672f101d2959E73fF3', decimals: 18 }, // Amoy PoS DAI
+];

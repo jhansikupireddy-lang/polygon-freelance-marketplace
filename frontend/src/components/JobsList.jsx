@@ -3,8 +3,8 @@ import { useAccount, useReadContract, useWriteContract, useWaitForTransactionRec
 import { motion } from 'framer-motion';
 import { Briefcase, CheckCircle, ExternalLink, RefreshCcw } from 'lucide-react';
 import FreelanceEscrowABI from '../contracts/FreelanceEscrow.json';
-import { formatEther } from 'viem';
-import { CONTRACT_ADDRESS } from '../constants';
+import { formatEther, formatUnits, parseUnits, erc20Abi } from 'viem';
+import { CONTRACT_ADDRESS, SUPPORTED_TOKENS } from '../constants';
 import { api } from '../services/api';
 import UserLink from './UserLink';
 
@@ -92,6 +92,7 @@ function JobsList({ onUserClick }) {
 function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick }) {
     const { address } = useAccount();
     const [metadata, setMetadata] = React.useState(null);
+    const [isApproving, setIsApproving] = React.useState(false);
     const { data: job, refetch } = useReadContract({
         address: CONTRACT_ADDRESS,
         abi: FreelanceEscrowABI.abi,
@@ -126,7 +127,10 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick })
 
     if (!job) return null;
 
-    const [id, client, freelancer, amount, freelancerStake, totalPaidOut, status, resultUri, paid, milestoneCount] = job;
+    const [id, client, freelancer, token, amount, freelancerStake, totalPaidOut, status, resultUri, paid, milestoneCount] = job;
+    const tokenInfo = SUPPORTED_TOKENS.find(t => t.address.toLowerCase() === token.toLowerCase()) || SUPPORTED_TOKENS[0];
+    const currency = tokenInfo.symbol;
+    const decimals = tokenInfo.decimals;
 
     const { data: review } = useReadContract({
         address: CONTRACT_ADDRESS,
@@ -140,7 +144,7 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick })
     const matchesSearch = !searchQuery ||
         metadata?.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         metadata?.description?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesBudget = !minBudget || Number(formatEther(amount)) >= Number(minBudget);
+    const matchesBudget = !minBudget || Number(formatUnits(amount, decimals)) >= Number(minBudget);
 
     if (!matchesCategory || !matchesSearch || !matchesBudget) {
         return null;
@@ -150,14 +154,33 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick })
     const isFreelancer = address?.toLowerCase() === freelancer.toLowerCase();
     const isArbitrator = address?.toLowerCase() === arbitrator?.toLowerCase();
 
+    const handleApproveStake = async () => {
+        if (token === '0x0000000000000000000000000000000000000000') return;
+        setIsApproving(true);
+        try {
+            const requiredStake = (amount * 10n) / 100n;
+            await writeContract({
+                address: token,
+                abi: erc20Abi,
+                functionName: 'approve',
+                args: [CONTRACT_ADDRESS, requiredStake],
+            });
+            alert('Stake approval sent!');
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setIsApproving(false);
+        }
+    };
+
     const handleAccept = () => {
-        const stake = (amount * 10n) / 100n;
+        const requiredStake = (amount * 10n) / 100n;
         writeContract({
             address: CONTRACT_ADDRESS,
             abi: FreelanceEscrowABI.abi,
             functionName: 'acceptJob',
             args: [BigInt(jobId)],
-            value: stake,
+            value: token === '0x0000000000000000000000000000000000000000' ? requiredStake : 0n,
         });
     };
 
@@ -225,7 +248,7 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick })
         <div className="glass-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
                 <span className={`badge ${status === 3 ? 'dispute-badge' : ''}`}>{statusLabels[status]}</span>
-                <span style={{ fontWeight: '600' }}>{formatEther(amount)} MATIC</span>
+                <span style={{ fontWeight: '600' }}>{formatUnits(amount, decimals)} {currency}</span>
             </div>
 
             <h3 style={{ marginBottom: '5px' }}>{metadata?.title || `Job #${jobId}`}</h3>
@@ -259,10 +282,10 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick })
                 <div style={{ marginBottom: '20px', padding: '15px', background: 'rgba(0,0,0,0.05)', borderRadius: '8px' }}>
                     <h4 style={{ fontSize: '0.8rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '10px' }}>Milestones</h4>
                     {Array.from({ length: Number(milestoneCount) }).map((_, idx) => (
-                        <MilestoneRow key={idx} jobId={jobId} mId={idx} isClient={isClient} onRelease={handleReleaseMilestone} />
+                        <MilestoneRow key={idx} jobId={jobId} mId={idx} isClient={isClient} tokenInfo={tokenInfo} onRelease={handleReleaseMilestone} />
                     ))}
                     <div style={{ fontSize: '0.8rem', marginTop: '10px', fontWeight: '600' }}>
-                        Paid: {formatEther(totalPaidOut)} / {formatEther(amount)} MATIC
+                        Paid: {formatUnits(totalPaidOut, decimals)} / {formatUnits(amount, decimals)} {currency}
                     </div>
                 </div>
             )}
@@ -278,9 +301,16 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick })
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                 {isFreelancer && status === 0 && (
-                    <button onClick={handleAccept} className="btn-primary" style={{ flex: 1 }} disabled={isPending || isConfirming}>
-                        {isPending || isConfirming ? 'Staking...' : 'Accept & Stake (10%)'}
-                    </button>
+                    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {token !== '0x0000000000000000000000000000000000000000' && (
+                            <button onClick={handleApproveStake} className="btn-secondary" style={{ flex: 1 }} disabled={isPending || isConfirming || isApproving}>
+                                {isApproving ? 'Approving Stake...' : `Approve Stake (10% ${currency})`}
+                            </button>
+                        )}
+                        <button onClick={handleAccept} className="btn-primary" style={{ flex: 1 }} disabled={isPending || isConfirming || isApproving}>
+                            {isPending || isConfirming ? 'Staking...' : `Accept & Stake (10% ${currency})`}
+                        </button>
+                    </div>
                 )}
 
                 {isFreelancer && (status === 1 || status === 2) && (
@@ -325,7 +355,7 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick })
     );
 }
 
-function MilestoneRow({ jobId, mId, isClient, onRelease }) {
+function MilestoneRow({ jobId, mId, isClient, tokenInfo, onRelease }) {
     const { data: milestone } = useReadContract({
         address: CONTRACT_ADDRESS,
         abi: FreelanceEscrowABI.abi,
@@ -338,7 +368,7 @@ function MilestoneRow({ jobId, mId, isClient, onRelease }) {
 
     return (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem', marginBottom: '8px' }}>
-            <span>{desc} ({formatEther(amt)} MATIC)</span>
+            <span>{desc} ({formatUnits(amt, tokenInfo.decimals)} {tokenInfo.symbol})</span>
             {isReleased ? (
                 <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <CheckCircle size={14} /> Released

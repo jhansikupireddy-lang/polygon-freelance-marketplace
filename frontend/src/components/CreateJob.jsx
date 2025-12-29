@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
-import { parseEther } from 'viem';
-import { Send, Loader2 } from 'lucide-react';
+import { parseEther, parseUnits, erc20Abi } from 'viem';
+import { Send, Loader2, Info } from 'lucide-react';
 import FreelanceEscrowABI from '../contracts/FreelanceEscrow.json';
-import { CONTRACT_ADDRESS } from '../constants';
+import { CONTRACT_ADDRESS, SUPPORTED_TOKENS } from '../constants';
 import { api } from '../services/api';
 
 
@@ -13,7 +13,9 @@ function CreateJob({ onJobCreated }) {
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [category, setCategory] = useState('Development');
+    const [selectedToken, setSelectedToken] = useState(SUPPORTED_TOKENS[0]);
     const [milestones, setMilestones] = useState([{ amount: '', description: '' }]);
+    const [isApproving, setIsApproving] = useState(false);
 
     const { data: hash, writeContract, isPending, error } = useWriteContract();
     const { data: jobCount } = useReadContract({
@@ -36,20 +38,41 @@ function CreateJob({ onJobCreated }) {
         setMilestones(newMilestones);
     };
 
+    const handleApprove = async () => {
+        if (selectedToken.address === '0x0000000000000000000000000000000000000000') return;
+        setIsApproving(true);
+        try {
+            const rawAmount = parseUnits(amount, selectedToken.decimals);
+            await writeContract({
+                address: selectedToken.address,
+                abi: erc20Abi,
+                functionName: 'approve',
+                args: [CONTRACT_ADDRESS, rawAmount],
+            });
+            alert('Approval transaction sent!');
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setIsApproving(false);
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!freelancer || !amount || !title) return;
 
+        const rawAmount = parseUnits(amount, selectedToken.decimals);
+
         if (milestones.length > 1 || (milestones[0].amount && milestones[0].description)) {
             // Milestone flow
-            const milestoneAmounts = milestones.map(m => parseEther(m.amount));
+            const milestoneAmounts = milestones.map(m => parseUnits(m.amount, selectedToken.decimals));
             const milestoneDescs = milestones.map(m => m.description);
             writeContract({
                 address: CONTRACT_ADDRESS,
                 abi: FreelanceEscrowABI.abi,
                 functionName: 'createJobWithMilestones',
-                args: [freelancer, description, milestoneAmounts, milestoneDescs],
-                value: parseEther(amount),
+                args: [freelancer, selectedToken.address, rawAmount, description, milestoneAmounts, milestoneDescs],
+                value: selectedToken.address === '0x0000000000000000000000000000000000000000' ? rawAmount : 0n,
             });
         } else {
             // Standard flow
@@ -57,8 +80,8 @@ function CreateJob({ onJobCreated }) {
                 address: CONTRACT_ADDRESS,
                 abi: FreelanceEscrowABI.abi,
                 functionName: 'createJob',
-                args: [freelancer, description],
-                value: parseEther(amount),
+                args: [freelancer, selectedToken.address, rawAmount, description],
+                value: selectedToken.address === '0x0000000000000000000000000000000000000000' ? rawAmount : 0n,
             });
         }
     };
@@ -128,18 +151,44 @@ function CreateJob({ onJobCreated }) {
                     />
                 </div>
 
-                <div style={{ marginBottom: '20px' }}>
-                    <label>Budget (MATIC)</label>
-                    <input
-                        type="number"
-                        step="0.01"
-                        placeholder="0.5"
-                        className="input-field"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        required
-                    />
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                    <div>
+                        <label>Budget</label>
+                        <input
+                            type="number"
+                            step="0.01"
+                            placeholder="0.5"
+                            className="input-field"
+                            value={amount}
+                            onChange={(e) => setAmount(e.target.value)}
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label>Currency</label>
+                        <select
+                            className="input-field"
+                            value={selectedToken.symbol}
+                            onChange={(e) => setSelectedToken(SUPPORTED_TOKENS.find(t => t.symbol === e.target.value))}
+                        >
+                            {SUPPORTED_TOKENS.map(t => <option key={t.symbol}>{t.symbol}</option>)}
+                        </select>
+                    </div>
                 </div>
+
+                {selectedToken.address !== '0x0000000000000000000000000000000000000000' && (
+                    <div className="glass-card" style={{ padding: '15px', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid #3b82f6', marginBottom: '20px' }}>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+                            <Info size={18} color="#3b82f6" />
+                            <p style={{ fontSize: '0.85rem', color: '#3b82f6', margin: 0 }}>
+                                ERC20 token requires approval before escrowing.
+                            </p>
+                        </div>
+                        <button type="button" onClick={handleApprove} className="btn-secondary" style={{ width: '100%', borderColor: '#3b82f6', color: '#3b82f6' }} disabled={isApproving}>
+                            {isApproving ? 'Approving...' : `Approve ${selectedToken.symbol}`}
+                        </button>
+                    </div>
+                )}
 
                 <div style={{ marginBottom: '20px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>

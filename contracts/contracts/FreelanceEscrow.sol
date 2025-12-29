@@ -3,9 +3,11 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract FreelanceEscrow is ERC721URIStorage, Ownable {
+contract FreelanceEscrow is ERC721URIStorage, Ownable, ReentrancyGuard {
     uint256 private _nextTokenId;
 
     address public arbitrator;
@@ -29,6 +31,7 @@ contract FreelanceEscrow is ERC721URIStorage, Ownable {
         uint256 id;
         address client;
         address freelancer;
+        address token; // address(0) for native MATIC
         uint256 amount;
         uint256 freelancerStake;
         uint256 totalPaidOut;
@@ -62,17 +65,23 @@ contract FreelanceEscrow is ERC721URIStorage, Ownable {
         arbitrator = _arbitrator;
     }
 
-    function createJob(address freelancer, string memory _initialMetadataUri) external payable {
-        require(msg.value > 0, "Amount must be greater than 0");
-        require(freelancer != address(0), "Invalid freelancer address");
-        require(freelancer != msg.sender, "Client cannot be freelancer");
+    function createJob(address freelancer, address token, uint256 amount, string memory _initialMetadataUri) external payable nonReentrant {
+        if (token == address(0)) {
+            require(msg.value == amount && amount > 0, "Invalid native amount");
+        } else {
+            require(msg.value == 0, "Do not send native with token job");
+            IERC20(token).transferFrom(msg.sender, address(this), amount);
+        }
+        require(freelancer != address(0), "Invalid freelancer");
+        require(freelancer != msg.sender, "No self-hiring");
 
         jobCount++;
         jobs[jobCount] = Job({
             id: jobCount,
             client: msg.sender,
             freelancer: freelancer,
-            amount: msg.value,
+            token: token,
+            amount: amount,
             freelancerStake: 0,
             totalPaidOut: 0,
             status: JobStatus.Created,
@@ -81,30 +90,39 @@ contract FreelanceEscrow is ERC721URIStorage, Ownable {
             milestoneCount: 0
         });
 
-        emit JobCreated(jobCount, msg.sender, freelancer, msg.value);
+        emit JobCreated(jobCount, msg.sender, freelancer, amount);
     }
 
     function createJobWithMilestones(
-        address freelancer, 
-        string memory _initialMetadataUri, 
-        uint256[] memory milestoneAmounts, 
+        address freelancer,
+        address token,
+        uint256 totalAmount,
+        string memory _initialMetadataUri,
+        uint256[] memory milestoneAmounts,
         string[] memory milestoneDescriptions
-    ) external payable {
+    ) external payable nonReentrant {
         require(milestoneAmounts.length == milestoneDescriptions.length, "Mismatched milestones");
-        require(msg.value > 0, "Amount must be greater than 0");
         
-        uint256 totalMilestoneAmount = 0;
+        uint256 calcTotal = 0;
         for(uint256 i = 0; i < milestoneAmounts.length; i++) {
-            totalMilestoneAmount += milestoneAmounts[i];
+            calcTotal += milestoneAmounts[i];
         }
-        require(totalMilestoneAmount == msg.value, "Total milestones must equal value");
+        require(calcTotal == totalAmount && totalAmount > 0, "Invalid total amount");
+
+        if (token == address(0)) {
+            require(msg.value == totalAmount, "Invalid native amount");
+        } else {
+            require(msg.value == 0, "No native with token");
+            IERC20(token).transferFrom(msg.sender, address(this), totalAmount);
+        }
 
         jobCount++;
         jobs[jobCount] = Job({
             id: jobCount,
             client: msg.sender,
             freelancer: freelancer,
-            amount: msg.value,
+            token: token,
+            amount: totalAmount,
             freelancerStake: 0,
             totalPaidOut: 0,
             status: JobStatus.Created,
@@ -122,10 +140,10 @@ contract FreelanceEscrow is ERC721URIStorage, Ownable {
             emit MilestoneCreated(jobCount, i, milestoneAmounts[i], milestoneDescriptions[i]);
         }
 
-        emit JobCreated(jobCount, msg.sender, freelancer, msg.value);
+        emit JobCreated(jobCount, msg.sender, freelancer, totalAmount);
     }
 
-    function releaseMilestone(uint256 jobId, uint256 milestoneId) external {
+    function releaseMilestone(uint256 jobId, uint256 milestoneId) external nonReentrant {
         Job storage job = jobs[jobId];
         require(msg.sender == job.client, "Only client can release milestones");
         require(milestoneId < job.milestoneCount, "Invalid milestone ID");
@@ -137,24 +155,34 @@ contract FreelanceEscrow is ERC721URIStorage, Ownable {
         milestone.isReleased = true;
         job.totalPaidOut += milestone.amount;
 
-        (bool success, ) = payable(job.freelancer).call{value: milestone.amount}("");
-        require(success, "Transfer failed");
+        if (job.token == address(0)) {
+            (bool success, ) = payable(job.freelancer).call{value: milestone.amount}("");
+            require(success, "Native transfer failed");
+        } else {
+            IERC20(job.token).transfer(job.freelancer, milestone.amount);
+        }
 
         emit MilestoneReleased(jobId, milestoneId, milestone.amount);
     }
 
-    function acceptJob(uint256 jobId) external payable {
+    function acceptJob(uint256 jobId) external payable nonReentrant {
         Job storage job = jobs[jobId];
         require(msg.sender == job.freelancer, "Only freelancer can accept");
         require(job.status == JobStatus.Created, "Invalid status");
         
         uint256 requiredStake = (job.amount * FREELANCER_STAKE_PERCENT) / 100;
-        require(msg.value >= requiredStake, "Insufficient stake");
+        
+        if (job.token == address(0)) {
+            require(msg.value >= requiredStake, "Insufficient stake");
+            job.freelancerStake = msg.value;
+        } else {
+            require(msg.value == 0, "No native stake for token job");
+            IERC20(job.token).transferFrom(msg.sender, address(this), requiredStake);
+            job.freelancerStake = requiredStake;
+        }
 
-        job.freelancerStake = msg.value;
         job.status = JobStatus.Accepted;
-
-        emit JobAccepted(jobId, msg.sender, msg.value);
+        emit JobAccepted(jobId, msg.sender, job.freelancerStake);
     }
 
     function submitWork(uint256 jobId, string memory resultUri) external {
@@ -168,7 +196,7 @@ contract FreelanceEscrow is ERC721URIStorage, Ownable {
         emit WorkSubmitted(jobId, resultUri);
     }
 
-    function releaseFunds(uint256 jobId) external {
+    function releaseFunds(uint256 jobId) external nonReentrant {
         Job storage job = jobs[jobId];
         require(msg.sender == job.client, "Only client can release funds");
         require(job.status == JobStatus.Ongoing, "Work must be submitted first");
@@ -181,8 +209,12 @@ contract FreelanceEscrow is ERC721URIStorage, Ownable {
         uint256 totalPayout = remainingAmount + job.freelancerStake;
         
         if (totalPayout > 0) {
-            (bool success, ) = payable(job.freelancer).call{value: totalPayout}("");
-            require(success, "Transfer failed");
+            if (job.token == address(0)) {
+                (bool success, ) = payable(job.freelancer).call{value: totalPayout}("");
+                require(success, "Native transfer failed");
+            } else {
+                IERC20(job.token).transfer(job.freelancer, totalPayout);
+            }
         }
 
         // Mint NFT for freelancer
@@ -218,27 +250,36 @@ contract FreelanceEscrow is ERC721URIStorage, Ownable {
         emit JobDisputed(jobId);
     }
 
-    function resolveDispute(uint256 jobId, address winner, uint256 freelancerAmount) external {
+    function resolveDispute(uint256 jobId, address winner, uint256 freelancerAmount) external nonReentrant {
         require(msg.sender == arbitrator, "Only arbitrator can resolve");
         Job storage job = jobs[jobId];
         require(job.status == JobStatus.Disputed, "Job not in dispute");
         require(winner == job.client || winner == job.freelancer, "Invalid winner");
         
-        uint256 totalPool = job.amount + job.freelancerStake;
+        uint256 totalPool = job.amount + job.freelancerStake - job.totalPaidOut;
         require(freelancerAmount <= totalPool, "Amount exceeds pool");
 
         job.paid = true;
         job.status = JobStatus.Completed;
 
-        if (freelancerAmount > 0) {
-            (bool success, ) = payable(job.freelancer).call{value: freelancerAmount}("");
-            require(success, "Freelancer payout failed");
-        }
-
         uint256 clientRefund = totalPool - freelancerAmount;
-        if (clientRefund > 0) {
-            (bool refundSuccess, ) = payable(job.client).call{value: clientRefund}("");
-            require(refundSuccess, "Client refund failed");
+
+        if (job.token == address(0)) {
+            if (freelancerAmount > 0) {
+                (bool success, ) = payable(job.freelancer).call{value: freelancerAmount}("");
+                require(success, "Freelancer payout failed");
+            }
+            if (clientRefund > 0) {
+                (bool refundSuccess, ) = payable(job.client).call{value: clientRefund}("");
+                require(refundSuccess, "Client refund failed");
+            }
+        } else {
+            if (freelancerAmount > 0) {
+                IERC20(job.token).transfer(job.freelancer, freelancerAmount);
+            }
+            if (clientRefund > 0) {
+                IERC20(job.token).transfer(job.client, clientRefund);
+            }
         }
     }
 }
