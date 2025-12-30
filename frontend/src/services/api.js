@@ -41,4 +41,8 @@ export const api = {
         });
         return response.json();
     },
+
+    getAnalytics: () => fetch(`${API_URL}/analytics`).then(res => res.json()),
+
+    getJobMatches: (jobId) => fetch(`${API_URL}/jobs/match/${jobId}`).then(res => res.json()),
 };

@@ -92,6 +92,7 @@ function JobsList({ onUserClick }) {
 function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick }) {
     const { address } = useAccount();
     const [metadata, setMetadata] = React.useState(null);
+    const [matchScore, setMatchScore] = React.useState(null);
     const [isApproving, setIsApproving] = React.useState(false);
     const { data: job, refetch } = useReadContract({
         address: CONTRACT_ADDRESS,
@@ -118,12 +119,18 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick })
             try {
                 const data = await api.getJobMetadata(jobId);
                 setMetadata(data);
+
+                if (address) {
+                    const matches = await api.getJobMatches(jobId);
+                    const myMatch = matches.find(m => m.address.toLowerCase() === address.toLowerCase());
+                    if (myMatch) setMatchScore(myMatch.matchScore);
+                }
             } catch (err) {
-                console.error('Failed to fetch metadata:', err);
+                console.error('Failed to fetch job metadata/matches:', err);
             }
         };
         fetchMetadata();
-    }, [jobId]);
+    }, [jobId, address]);
 
     if (!job) return null;
 
@@ -244,11 +251,40 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick })
         });
     };
 
+    const getMatchColor = (score) => {
+        if (score > 0.8) return '#10b981';
+        if (score > 0.5) return '#f59e0b';
+        return 'var(--text-muted)';
+    };
+
     return (
-        <div className="glass-card">
+        <div className="glass-card" style={{ position: 'relative' }}>
+            {matchScore !== null && status === 0 && (
+                <div style={{
+                    position: 'absolute',
+                    top: '-10px',
+                    right: '10px',
+                    background: getMatchColor(matchScore),
+                    color: 'white',
+                    fontSize: '0.7rem',
+                    padding: '4px 8px',
+                    borderRadius: '20px',
+                    fontWeight: 'bold',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    zIndex: 10
+                }}>
+                    ✨ AI Match: {Math.round(matchScore * 100)}%
+                </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
-                <span className={`badge ${status === 3 ? 'dispute-badge' : ''}`}>{statusLabels[status]}</span>
-                <span style={{ fontWeight: '600' }}>{formatUnits(amount, decimals)} {currency}</span>
+                <div className={`badge ${status === 3 ? 'dispute-badge' : ''}`}>{statusLabels[status]}</div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', borderColor: '#10b981', border: '1px solid' }}>🛡️ Insured</span>
+                    <span style={{ fontWeight: '600' }}>{formatUnits(amount, decimals)} {currency}</span>
+                </div>
             </div>
 
             <h3 style={{ marginBottom: '5px' }}>{metadata?.title || `Job #${jobId}`}</h3>

@@ -8,6 +8,7 @@ import { api } from '../services/api';
 function Dashboard() {
     const { address, isConnected } = useAccount();
     const [profile, setProfile] = React.useState({ name: '', bio: '', skills: '', category: 'Development' });
+    const [analytics, setAnalytics] = React.useState({ totalJobs: 0, totalVolume: 0, totalUsers: 0 });
     const [isSaving, setIsSaving] = React.useState(false);
     const { signMessageAsync } = useSignMessage();
 
@@ -22,6 +23,9 @@ function Dashboard() {
             api.getProfile(address).then(data => {
                 if (data.address) setProfile(data);
             });
+            api.getAnalytics().then(data => {
+                if (data && data.totalJobs !== undefined) setAnalytics(data);
+            });
         }
     }, [isConnected, address]);
 
@@ -29,15 +33,10 @@ function Dashboard() {
         e.preventDefault();
         setIsSaving(true);
         try {
-            // 1. Get Nonce
             const { nonce } = await api.getNonce(address);
             if (!nonce) throw new Error('Could not get nonce');
-
-            // 2. Sign Message
             const message = `Login to PolyLance: ${nonce}`;
             const signature = await signMessageAsync({ message });
-
-            // 3. Update Profile with Signature
             await api.updateProfile({ address, ...profile, signature });
             alert('Profile updated securely!');
         } catch (err) {
@@ -72,6 +71,11 @@ function Dashboard() {
                     <div className="badge" style={{ borderColor: 'var(--primary)', color: 'var(--primary)', border: '1px solid' }}>
                         {profile.skills ? 'Freelancer' : 'Client'}
                     </div>
+                    {profile.reputationScore > 100 && (
+                        <div className="badge" style={{ borderColor: '#8b5cf6', color: '#8b5cf6', border: '1px solid' }}>
+                            ✨ ZK-Verified Reputation
+                        </div>
+                    )}
                     <div className="badge">Verified Account</div>
                 </div>
             </section>
@@ -82,7 +86,7 @@ function Dashboard() {
                         <div>
                             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: '500' }}>TOTAL CONTRACTS</p>
                             <div className="stat-value">{jobCount?.toString() || '0'}</div>
-                            <p style={{ color: '#10b981', fontSize: '0.8rem' }}>+12% from last month</p>
+                            <p style={{ color: '#10b981', fontSize: '0.8rem' }}>On-chain Active</p>
                         </div>
                         <Briefcase size={24} color="var(--primary)" />
                     </div>
@@ -107,6 +111,24 @@ function Dashboard() {
                             <p style={{ color: '#10b981', fontSize: '0.8rem' }}>Securely held in escrow</p>
                         </div>
                         <CheckCircle size={24} color="#10b981" />
+                    </div>
+                </div>
+            </div>
+
+            <div style={{ marginTop: '24px', marginBottom: '40px' }}>
+                <h3 style={{ marginBottom: '16px', opacity: 0.8 }}>Marketplace Insights (Global)</h3>
+                <div className="grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' }}>
+                    <div className="glass-card" style={{ padding: '15px', background: 'rgba(255,255,255,0.03)' }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Global Volume</div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: '700' }}>{(analytics.totalVolume || 0).toFixed(2)} MATIC</div>
+                    </div>
+                    <div className="glass-card" style={{ padding: '15px', background: 'rgba(255,255,255,0.03)' }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total Jobs</div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: '700' }}>{analytics.totalJobs || 0}</div>
+                    </div>
+                    <div className="glass-card" style={{ padding: '15px', background: 'rgba(255,255,255,0.03)' }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Global Users</div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: '700' }}>{analytics.totalUsers || 0}</div>
                     </div>
                 </div>
             </div>
