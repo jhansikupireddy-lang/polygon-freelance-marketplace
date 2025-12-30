@@ -156,9 +156,48 @@ app.get('/api/portfolios/:address', async (req, res) => {
     }
 });
 
-if (process.env.NODE_ENV !== 'test') {
-    app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-        startSyncer().catch(console.error);
-    });
+// AI Job Matching
+app.get('/api/jobs/match/:jobId', async (req, res) => {
+    const { jobId } = req.params;
+    try {
+        const job = await JobMetadata.findOne({ jobId: parseInt(jobId) });
+        if (!job) return res.status(404).json({ error: 'Job not found' });
+
+        const freelancers = await Profile.find({ completedJobs: { $gt: 0 } });
+        const { calculateMatchScore } = await import('./aiMatcher.js');
+
+        const matches = await Promise.all(freelancers.map(async (f) => {
+            const score = await calculateMatchScore(job.description, f);
+            return { address: f.address, name: f.name, matchScore: score };
+        }));
+
+        res.json(matches.sort((a, b) => b.matchScore - a.matchScore));
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Ecosystem Analytics
+app.get('/api/analytics', async (req, res) => {
+    try {
+        const totalJobs = await JobMetadata.countDocuments();
+        const profiles = await Profile.find();
+        const totalVolume = profiles.reduce((acc, p) => acc + (p.totalEarned || 0), 0);
+        const avgReputation = profiles.length > 0 ?
+            profiles.reduce((acc, p) => acc + (p.reputationScore || 0), 0) / profiles.length : 0;
+
+        res.json({
+            totalJobs,
+            totalVolume,
+            avgReputation,
+            totalUsers: profiles.length
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    startSyncer().catch(console.error);
+});
 }
