@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
+import { useWriteContract, useWaitForTransactionReceipt, useReadContract, useAccount } from 'wagmi';
 import { parseEther, parseUnits, erc20Abi } from 'viem';
-import { Send, Loader2, Info } from 'lucide-react';
+import { Send, Loader2, Info, CreditCard } from 'lucide-react';
+import StripeOnrampModal from './StripeOnrampModal';
 import FreelanceEscrowABI from '../contracts/FreelanceEscrow.json';
 import { CONTRACT_ADDRESS, SUPPORTED_TOKENS } from '../constants';
 import { api } from '../services/api';
@@ -16,6 +17,8 @@ function CreateJob({ onJobCreated }) {
     const [selectedToken, setSelectedToken] = useState(SUPPORTED_TOKENS[0]);
     const [milestones, setMilestones] = useState([{ amount: '', description: '' }]);
     const [isApproving, setIsApproving] = useState(false);
+    const [isStripeModalOpen, setIsStripeModalOpen] = useState(false);
+    const { address } = useAccount();
 
     const { data: hash, writeContract, isPending, error } = useWriteContract();
     const { data: jobCount } = useReadContract({
@@ -176,6 +179,27 @@ function CreateJob({ onJobCreated }) {
                     </div>
                 </div>
 
+                <div style={{ marginBottom: '20px' }}>
+                    <button
+                        type="button"
+                        className="btn-secondary"
+                        style={{
+                            width: '100%',
+                            borderStyle: 'dashed',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            background: 'rgba(99, 102, 241, 0.05)',
+                            borderColor: 'rgba(99, 102, 241, 0.3)',
+                            color: '#818cf8'
+                        }}
+                        onClick={() => setIsStripeModalOpen(true)}
+                    >
+                        <CreditCard size={18} /> Buy Crypto with Card (Stripe Onramp)
+                    </button>
+                </div>
+
                 {selectedToken.address !== '0x0000000000000000000000000000000000000000' && (
                     <div className="glass-card" style={{ padding: '15px', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid #3b82f6', marginBottom: '20px' }}>
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
@@ -252,6 +276,12 @@ function CreateJob({ onJobCreated }) {
                     )}
                 </button>
             </form>
+
+            <StripeOnrampModal
+                address={address}
+                isOpen={isStripeModalOpen}
+                onClose={() => setIsStripeModalOpen(false)}
+            />
         </div>
     );
 }

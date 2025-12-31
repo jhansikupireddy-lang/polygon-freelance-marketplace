@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { api } from '../services/api';
-import { User, Briefcase, MapPin, Link as LinkIcon, Award, ExternalLink, Globe, Github, Twitter } from 'lucide-react';
+import { User, Briefcase, MapPin, Link as LinkIcon, Award, ExternalLink, Globe, Github, Twitter, Zap, Coins } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useReadContract } from 'wagmi';
+import { erc20Abi, formatEther } from 'viem';
+import { POLY_TOKEN_ADDRESS } from '../constants';
 
 function Portfolio({ address, onBack }) {
     const [data, setData] = useState(null);
@@ -15,6 +16,13 @@ function Portfolio({ address, onBack }) {
             });
         }
     }, [address]);
+
+    const { data: plnBalance } = useReadContract({
+        address: POLY_TOKEN_ADDRESS,
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [address],
+    });
 
     if (loading) return <div style={{ textAlign: 'center', padding: '100px' }}>Loading Portfolio...</div>;
     if (!data?.profile?.address) return <div style={{ textAlign: 'center', padding: '100px' }}>Profile not found.</div>;
@@ -90,6 +98,27 @@ function Portfolio({ address, onBack }) {
                         <p style={{ fontSize: '0.8rem', color: '#10b981', marginTop: '10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
                             <Award size={14} /> Verified on Polygon
                         </p>
+                    </div>
+
+                    <div className="glass-card" style={{ background: 'linear-gradient(135deg, rgba(138, 43, 226, 0.1), rgba(34, 211, 238, 0.1))' }}>
+                        <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
+                            <Zap size={20} color="var(--accent-cyan)" /> Rewards & Stake
+                        </h3>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>PLN Balance</span>
+                                <span style={{ fontWeight: 700, color: 'var(--accent-cyan)' }}>
+                                    {plnBalance ? parseFloat(formatEther(plnBalance)).toFixed(0) : '0'} PLN
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Reputation</span>
+                                <span style={{ fontWeight: 700 }}>{profile.reputationScore || 0} RP</span>
+                            </div>
+                            <button className="btn-primary" style={{ width: '100%', padding: '10px', fontSize: '0.8rem', marginTop: '10px', background: 'var(--accent-cyan)' }}>
+                                Stake PLN (Coming Soon)
+                            </button>
+                        </div>
                     </div>
                 </div>
 

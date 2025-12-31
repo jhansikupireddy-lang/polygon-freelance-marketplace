@@ -5,24 +5,13 @@ import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 
-    mapping(address => bool) public minters;
-
+contract PolyToken is ERC20Votes, ERC20Permit, Ownable {
     constructor(address initialOwner) 
         ERC20("PolyLance Token", "POLY") 
         ERC20Permit("PolyLance Token")
         Ownable(initialOwner) 
     {
         _mint(initialOwner, 1_000_000_000 * 10 ** decimals()); // 1 Billion Supply
-        minters[initialOwner] = true;
-    }
-
-    function setMinter(address _minter, bool _allowed) external onlyOwner {
-        minters[_minter] = _allowed;
-    }
-
-    function mint(address _to, uint256 _amount) external {
-        require(minters[msg.sender], "Not a minter");
-        _mint(_to, _amount);
     }
 
     // The functions below are overrides required by Solidity.

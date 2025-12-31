@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAccount, useReadContract, useSignMessage } from 'wagmi';
 import { Wallet, Briefcase, CheckCircle, Clock, Save, User, Award, PlusCircle } from 'lucide-react';
 import FreelanceEscrowABI from '../contracts/FreelanceEscrow.json';
@@ -7,6 +7,10 @@ import { api } from '../services/api';
 
 function Dashboard() {
     const { address, isConnected } = useAccount();
+
+    useEffect(() => {
+        console.log('[DASHBOARD] Account State:', { address, isConnected });
+    }, [address, isConnected]);
     const [profile, setProfile] = React.useState({ name: '', bio: '', skills: '', category: 'Development' });
     const [analytics, setAnalytics] = React.useState({ totalJobs: 0, totalVolume: 0, totalUsers: 0 });
     const [isSaving, setIsSaving] = React.useState(false);
@@ -37,7 +41,7 @@ function Dashboard() {
             if (!nonce) throw new Error('Could not get nonce');
             const message = `Login to PolyLance: ${nonce}`;
             const signature = await signMessageAsync({ message });
-            await api.updateProfile({ address, ...profile, signature });
+            await api.updateProfile({ address, ...profile, signature, message });
             alert('Profile updated securely!');
         } catch (err) {
             console.error(err);

@@ -7,74 +7,135 @@ import {
     createAuthenticationAdapter,
     darkTheme,
 } from '@rainbow-me/rainbowkit';
-import { WagmiProvider, http } from 'wagmi';
-import { polygon, polygonAmoy, hardhat } from 'wagmi/chains';
+import { WagmiProvider, http, fallback, useAccount } from 'wagmi';
+import { polygon, polygonAmoy, hardhat, base, baseSepolia } from 'wagmi/chains';
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import { SiweMessage } from 'siwe';
 
-const API_URL = 'http://localhost:3001/api';
-const queryClient = new QueryClient();
+function ConnectionLogger({ children }) {
+    const { address, isConnected, isConnecting, isReconnecting } = useAccount();
+
+    React.useEffect(() => {
+        if (isConnected) {
+            console.log(`[WAGMI] Connected with address: ${address}`);
+        }
+        if (isConnecting) console.log('[WAGMI] Connecting...');
+        if (isReconnecting) console.log('[WAGMI] Reconnecting...');
+    }, [isConnected, address, isConnecting, isReconnecting]);
+
+    return children;
+}
+
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const queryClient = new QueryClient({
+    defaultOptions: {
+        queries: {
+            retry: 1,
+            refetchOnWindowFocus: false,
+        },
+    },
+});
 
 export function Web3Provider({ children }) {
     const [authStatus, setAuthStatus] = useState('unauthenticated');
 
+    React.useEffect(() => {
+        console.log('[NETWORK] Current App Origin:', window.location.origin);
+    }, []);
+
     const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || '65a5f1dd3b7df21cef34448cac019cd5';
 
-    // Using getDefaultConfig for stability in Wagmi v2
-    const config = useMemo(() => getDefaultConfig({
-        appName: 'PolyLance',
-        projectId,
-        chains: [polygon, polygonAmoy, hardhat],
-        transports: {
-            [polygon.id]: http(),
-            [polygonAmoy.id]: http('https://rpc-amoy.polygon.technology'),
-            [hardhat.id]: http(),
-        },
-        ssr: true,
-    }), [projectId]);
+    const config = useMemo(() => {
+        const alchemyId = import.meta.env.VITE_ALCHEMY_ID;
+        const infuraId = import.meta.env.VITE_INFURA_ID;
+
+        return getDefaultConfig({
+            appName: 'PolyLance',
+            appDescription: 'Enterprise Decentralized Freelance Marketplace',
+            appUrl: window.location.origin,
+            appIcon: 'https://raw.githubusercontent.com/lucide-react/lucide/main/icons/briefcase.svg',
+            projectId,
+            chains: [polygonAmoy, polygon, hardhat, base, baseSepolia],
+            transports: {
+                [polygonAmoy.id]: fallback([
+                    http('https://rpc-amoy.polygon.technology'),
+                    http('https://polygon-amoy-bor-rpc.publicnode.com'),
+                    http('https://rpc.ankr.com/polygon_amoy')
+                ]),
+                [polygon.id]: fallback([
+                    alchemyId ? http(`https://polygon-mainnet.g.alchemy.com/v2/${alchemyId}`) : http(),
+                    http('https://polygon-rpc.com'),
+                    http('https://rpc-mainnet.maticvigil.com'),
+                    http('https://polygon.llamarpc.com')
+                ]),
+                [hardhat.id]: http(),
+                [base.id]: alchemyId ? http(`https://base-mainnet.g.alchemy.com/v2/${alchemyId}`) : http(),
+                [baseSepolia.id]: alchemyId ? http(`https://base-sepolia.g.alchemy.com/v2/${alchemyId}`) : http(),
+            },
+            ssr: false,
+        });
+    }, [projectId]);
 
     const authAdapter = useMemo(() => createAuthenticationAdapter({
         getNonce: async () => {
-            const response = await fetch(`${API_URL}/auth/nonce/default`);
-            const { nonce } = await response.json();
-            return nonce;
+            try {
+                console.log('[AUTH] Requesting nonce...');
+                const response = await fetch(`${API_URL}/auth/nonce/default`);
+                if (!response.ok) throw new Error('Failed to fetch nonce');
+                const { nonce } = await response.json();
+                console.log('[AUTH] Nonce received:', nonce);
+                return nonce;
+            } catch (error) {
+                console.error('[AUTH] Nonce error:', error);
+                throw error;
+            }
         },
 
         createMessage: ({ nonce, address, chainId }) => {
+            console.log('[AUTH] createMessage called:', { nonce, address, chainId });
             return new SiweMessage({
-                domain: window.location.host,
+                domain: window.location.hostname,
                 address,
-                statement: 'Sign in with Ethereum to PolyLance.',
+                statement: 'Sign in to PolyLance',
                 uri: window.location.origin,
                 version: '1',
-                chainId,
+                chainId: Number(chainId),
                 nonce,
             });
         },
 
         getMessageBody: ({ message }) => {
+            console.log('[AUTH] getMessageBody preparing string...');
             return message.prepareMessage();
         },
 
         verify: async ({ message, signature }) => {
-            const verifyRes = await fetch(`${API_URL}/profiles`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    address: message.address,
-                    signature,
-                    name: '',
-                    bio: '',
-                    skills: ''
-                }),
-            });
+            console.log('[AUTH] verify called with signature:', signature ? signature.slice(0, 10) + '...' : 'null');
+            try {
+                setAuthStatus('loading');
+                const verifyRes = await fetch(`${API_URL}/auth/verify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: message.prepareMessage(),
+                        signature,
+                    }),
+                });
 
-            const data = await verifyRes.json();
-            const ok = !!data.address;
-            if (ok) {
-                setAuthStatus('authenticated');
+                if (!verifyRes.ok) {
+                    const errorData = await verifyRes.json();
+                    throw new Error(errorData.error || 'Verification failed');
+                }
+
+                const data = await verifyRes.json();
+                const ok = !!data.address;
+                setAuthStatus(ok ? 'authenticated' : 'unauthenticated');
+                return ok;
+            } catch (error) {
+                console.error('[AUTH] Verification error:', error);
+                setAuthStatus('unauthenticated');
+                return false;
             }
-            return ok;
         },
 
         signOut: async () => {
@@ -94,8 +155,10 @@ export function Web3Provider({ children }) {
                         accentColorForeground: 'white',
                         borderRadius: 'medium',
                         overlayBlur: 'small',
-                    })}>
-                        {children}
+                    })} modalSize="compact">
+                        <ConnectionLogger>
+                            {children}
+                        </ConnectionLogger>
                     </RainbowKitProvider>
                 </RainbowKitAuthenticationProvider>
             </QueryClientProvider>

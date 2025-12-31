@@ -5,3 +5,5 @@ export const SUPPORTED_TOKENS = [
     { symbol: 'USDC', address: '0x41e94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582', decimals: 6 }, // Amoy PoS USDC
     { symbol: 'DAI', address: '0x001B68356E62095104ee17672f101d2959E73fF3', decimals: 18 }, // Amoy PoS DAI
 ];
+
+export const POLY_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000'; // Set after deployment

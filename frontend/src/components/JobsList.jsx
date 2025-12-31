@@ -7,6 +7,8 @@ import { formatEther, formatUnits, parseUnits, erc20Abi } from 'viem';
 import { CONTRACT_ADDRESS, SUPPORTED_TOKENS } from '../constants';
 import { api } from '../services/api';
 import UserLink from './UserLink';
+import { checkRiskLevel } from '../utils/riskMitigation';
+import { AlertCircle } from 'lucide-react';
 
 
 const statusLabels = ['Created', 'Accepted', 'Ongoing', 'Disputed', 'Completed', 'Cancelled'];
@@ -221,12 +223,20 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick })
         });
     };
 
+    const { data: arbitrationCost } = useReadContract({
+        address: CONTRACT_ADDRESS,
+        abi: FreelanceEscrowABI.abi,
+        functionName: 'arbitrationCost', // Assuming a helper view in contract or just read from arbitrator
+    });
+
     const handleDispute = () => {
+        const cost = arbitrationCost || 0n; // Fallback or read directly
         writeContract({
             address: CONTRACT_ADDRESS,
             abi: FreelanceEscrowABI.abi,
             functionName: 'dispute',
             args: [BigInt(jobId)],
+            value: cost,
         });
     };
 
@@ -279,6 +289,25 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick })
                     ✨ AI Match: {Math.round(matchScore * 100)}%
                 </div>
             )}
+
+            {metadata && checkRiskLevel(metadata.title, metadata.description).isSuspicious && (
+                <div style={{
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid #ef4444',
+                    color: '#ef4444',
+                    borderRadius: '8px',
+                    padding: '10px',
+                    marginBottom: '15px',
+                    fontSize: '0.8rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                }}>
+                    <AlertCircle size={16} />
+                    <strong>Warning:</strong> Potential high-risk job detected. Avoid sharing private keys or paying outside the platform.
+                </div>
+            )}
+
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
                 <div className={`badge ${status === 3 ? 'dispute-badge' : ''}`}>{statusLabels[status]}</div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>

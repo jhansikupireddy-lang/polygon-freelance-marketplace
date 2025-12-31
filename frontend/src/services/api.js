@@ -1,48 +1,45 @@
 const API_URL = 'http://localhost:3001/api';
 
-export const api = {
-    getProfile: async (address) => {
-        const response = await fetch(`${API_URL}/profiles/${address}`);
-        return response.json();
-    },
+const handleResponse = async (response) => {
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'An unknown error occurred' }));
+        throw new Error(error.error || `HTTP error! status: ${response.status}`);
+    }
+    return response.json();
+};
 
-    getNonce: async (address) => {
-        const response = await fetch(`${API_URL}/auth/nonce/${address}`);
-        return response.json();
-    },
+export const api = {
+    getProfile: (address) => fetch(`${API_URL}/profiles/${address}`).then(handleResponse),
+
+    getNonce: (address) => fetch(`${API_URL}/auth/nonce/${address}`).then(handleResponse),
 
     updateProfile: (data) => fetch(`${API_URL}/profiles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
-    }).then(res => res.json()),
+    }).then(handleResponse),
 
-    getLeaderboard: () => fetch(`${API_URL}/leaderboard`).then(res => res.json()),
+    getLeaderboard: () => fetch(`${API_URL}/leaderboard`).then(handleResponse),
 
-    getPortfolio: (address) => fetch(`${API_URL}/portfolios/${address}`).then(res => res.json()),
+    getPortfolio: (address) => fetch(`${API_URL}/portfolios/${address}`).then(handleResponse),
 
-    getDisputedJobs: () => fetch(`${API_URL}/jobs/disputed`).then(res => res.json()), // Placeholder if we add specific disputed endpoint
+    getJobsMetadata: () => fetch(`${API_URL}/jobs`).then(handleResponse),
 
-    getJobsMetadata: async () => {
-        const response = await fetch(`${API_URL}/jobs`);
-        return response.json();
-    },
+    getJobMetadata: (jobId) => fetch(`${API_URL}/jobs/${jobId}`).then(handleResponse),
 
-    getJobMetadata: async (jobId) => {
-        const response = await fetch(`${API_URL}/jobs/${jobId}`);
-        return response.json();
-    },
+    saveJobMetadata: (jobMetadata) => fetch(`${API_URL}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(jobMetadata),
+    }).then(handleResponse),
 
-    saveJobMetadata: async (jobMetadata) => {
-        const response = await fetch(`${API_URL}/jobs`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(jobMetadata),
-        });
-        return response.json();
-    },
+    getAnalytics: () => fetch(`${API_URL}/analytics`).then(handleResponse),
 
-    getAnalytics: () => fetch(`${API_URL}/analytics`).then(res => res.json()),
+    getJobMatches: (jobId) => fetch(`${API_URL}/jobs/match/${jobId}`).then(handleResponse),
 
-    getJobMatches: (jobId) => fetch(`${API_URL}/jobs/match/${jobId}`).then(res => res.json()),
+    createStripeOnrampSession: (address) => fetch(`${API_URL}/stripe/create-onramp-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address })
+    }).then(handleResponse),
 };
