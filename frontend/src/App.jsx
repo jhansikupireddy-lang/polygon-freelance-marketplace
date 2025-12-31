@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { Briefcase, PlusCircle, LayoutDashboard, Ticket, MessageSquare, Trophy, User } from 'lucide-react';
+import { Briefcase, PlusCircle, LayoutDashboard, Ticket, MessageSquare, Trophy, User, Github } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Dashboard from './components/Dashboard';
 import CreateJob from './components/CreateJob';
