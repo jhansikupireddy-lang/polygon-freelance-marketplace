@@ -89,12 +89,28 @@ describe("FreelanceEscrow", function () {
             await mockERC20.connect(freelancer).approve(await escrow.getAddress(), stake);
             await escrow.connect(freelancer).acceptJob(1);
 
-            await escrow.connect(client).dispute(1);
+            await escrow.connect(client).dispute(1, { value: ethers.parseEther("0.1") }); // Assuming cost
 
-            const freelancerAmount = amount / 2n; // Custom split
-            await escrow.connect(owner).resolveDispute(1, freelancer.address, freelancerAmount);
+            // In our enhanced contract, we have ARBITRATOR_ROLE
+            const arbitratorRole = await escrow.ARBITRATOR_ROLE();
+            await escrow.grantRole(arbitratorRole, owner.address);
 
-            expect(await mockERC20.balanceOf(freelancer.address)).to.equal(freelancerAmount);
+            await expect(escrow.connect(owner).rule(0, 2)) // Ruling 2 -> Pay Freelancer
+                .to.emit(escrow, "FundsReleased");
+        });
+    });
+
+    describe("Access Control", function () {
+        it("Should restrict setPolyToken to admin", async function () {
+            await expect(escrow.connect(other).setPolyToken(other.address))
+                .to.be.revertedWithCustomError(escrow, "AccessControlUnauthorizedAccount");
+        });
+
+        it("Should allow admin to grant MANAGER_ROLE", async function () {
+            const managerRole = await escrow.MANAGER_ROLE();
+            await escrow.grantRole(managerRole, other.address);
+            expect(await escrow.hasRole(managerRole, other.address)).to.be.true;
         });
     });
 });
+

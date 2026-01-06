@@ -4,11 +4,13 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721URIStorageUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/common/ERC2981Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import "./ccip/Client.sol";
 import "./ccip/IAny2EVMMessageReceiver.sol";
@@ -28,11 +30,16 @@ contract FreelanceEscrow is
     ERC721URIStorageUpgradeable, 
     ERC2981Upgradeable, 
     OwnableUpgradeable, 
+    AccessControlUpgradeable,
     ReentrancyGuardUpgradeable, 
     UUPSUpgradeable,
     IAny2EVMMessageReceiver,
     OApp
 {
+    using SafeERC20 for IERC20;
+
+    bytes32 public constant ARBITRATOR_ROLE = keccak256("ARBITRATOR_ROLE");
+    bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
     uint256 private _nextTokenId;
 
     address public arbitrator;
@@ -106,8 +113,13 @@ contract FreelanceEscrow is
         __ERC721URIStorage_init();
         __ERC2981_init();
         __Ownable_init(initialOwner);
+        __AccessControl_init();
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
+
+        _grantRole(DEFAULT_ADMIN_ROLE, initialOwner);
+        _grantRole(ARBITRATOR_ROLE, initialOwner);
+        _grantRole(MANAGER_ROLE, initialOwner);
 
         arbitrator = initialOwner;
         _trustedForwarder = trustedForwarder;
@@ -139,7 +151,7 @@ contract FreelanceEscrow is
             if (job.token == address(0)) {
                 payable(job.client).transfer(job.amount);
             } else {
-                IERC20(job.token).transfer(job.client, job.amount);
+                IERC20(job.token).safeTransfer(job.client, job.amount);
             }
             emit JobCancelled(jobId);
         }
@@ -165,7 +177,7 @@ contract FreelanceEscrow is
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
-    function supportsInterface(bytes4 interfaceId) public view override(ERC721URIStorageUpgradeable, ERC2981Upgradeable) returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view override(ERC721URIStorageUpgradeable, ERC2981Upgradeable, AccessControlUpgradeable) returns (bool) {
         return interfaceId == type(IAny2EVMMessageReceiver).interfaceId || super.supportsInterface(interfaceId);
     }
 
@@ -246,7 +258,7 @@ contract FreelanceEscrow is
         if (token == address(0)) {
             require(msg.value == amount, "Amount mismatch");
         } else {
-            IERC20(token).transferFrom(sender, address(this), amount);
+            IERC20(token).safeTransferFrom(sender, address(this), amount);
         }
 
         uint256 deadline = durationDays > 0 ? block.timestamp + (durationDays * 1 days) : 0;
@@ -271,7 +283,7 @@ contract FreelanceEscrow is
             if (job.token == address(0)) {
                 IInsurancePool(insurancePool).depositNative{value: insuranceFee}();
             } else {
-                IERC20(job.token).approve(insurancePool, insuranceFee);
+                IERC20(job.token).safeIncreaseAllowance(insurancePool, insuranceFee);
                 IInsurancePool(insurancePool).deposit(job.token, insuranceFee);
             }
             emit InsurancePaid(jobId, insuranceFee);
@@ -300,7 +312,7 @@ contract FreelanceEscrow is
         if (job.token == address(0)) {
             require(msg.value == stake, "Stake mismatch");
         } else {
-            IERC20(job.token).transferFrom(_msgSender(), address(this), stake);
+            IERC20(job.token).safeTransferFrom(_msgSender(), address(this), stake);
         }
 
         job.freelancerStake = stake;
@@ -356,7 +368,7 @@ contract FreelanceEscrow is
         if (token == address(0)) {
             payable(to).transfer(amount);
         } else {
-            IERC20(token).transfer(to, amount);
+            IERC20(token).safeTransfer(to, amount);
         }
     }
 

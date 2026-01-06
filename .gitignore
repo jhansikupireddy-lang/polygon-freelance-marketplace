@@ -8,3 +8,6 @@ typechain-types
 .DS_Store
 *.bak
 FreelanceEscrow.json
+audit-reports/
+echidna-corpus/
+.env.*

@@ -10,5 +10,8 @@ export default defineConfig({
   ],
   server: {
     host: true,
+    headers: {
+      "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https: wss:; frame-src 'self' https:;"
+    }
   },
 })

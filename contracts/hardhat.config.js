@@ -1,6 +1,8 @@
 // require("@nomicfoundation/hardhat-toolbox");
 require("@nomicfoundation/hardhat-ethers");
 require("@openzeppelin/hardhat-upgrades");
+require("solidity-coverage");
+require("hardhat-gas-reporter");
 require("dotenv").config();
 
 /** @type import('hardhat/config').HardhatUserConfig */
@@ -13,6 +15,11 @@ module.exports = {
                 runs: 200,
             },
         },
+    },
+    gasReporter: {
+        enabled: process.env.REPORT_GAS !== undefined,
+        currency: "USD",
+        coinmarketcap: process.env.COINMARKETCAP_API_KEY,
     },
     networks: {
         hardhat: {

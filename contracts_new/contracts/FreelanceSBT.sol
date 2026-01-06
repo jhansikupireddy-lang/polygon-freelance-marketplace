@@ -5,12 +5,18 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
+interface IERC5192 {
+    event Locked(uint256 tokenId);
+    event Unlocked(uint256 tokenId);
+    function locked(uint256 tokenId) external view returns (bool);
+}
+
 /**
  * @title FreelanceSBT
  * @dev Soulbound Token (non-transferable) for freelancer reputation and ratings.
  * Each token representing a successfully completed job and its associated rating.
  */
-contract FreelanceSBT is ERC721, ERC721URIStorage, AccessControl {
+contract FreelanceSBT is ERC721, ERC721URIStorage, AccessControl, IERC5192 {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     uint256 private _nextTokenId;
 
@@ -30,6 +36,7 @@ contract FreelanceSBT is ERC721, ERC721URIStorage, AccessControl {
         uint256 tokenId = _nextTokenId++;
         _safeMint(to, tokenId);
         _setTokenURI(tokenId, uri);
+        emit Locked(tokenId);
     }
 
     /**
@@ -42,6 +49,11 @@ contract FreelanceSBT is ERC721, ERC721URIStorage, AccessControl {
             revert SoulboundTokenNonTransferable();
         }
         return super._update(to, tokenId, auth);
+    }
+
+    function locked(uint256 tokenId) external view override returns (bool) {
+        require(_ownerOf(tokenId) != address(0), "Nonexistent token");
+        return true;
     }
 
     // --- Overrides required by Solidity ---
@@ -61,6 +73,6 @@ contract FreelanceSBT is ERC721, ERC721URIStorage, AccessControl {
         override(ERC721, ERC721URIStorage, AccessControl)
         returns (bool)
     {
-        return super.supportsInterface(interfaceId);
+        return interfaceId == 0xb45a3c0e || super.supportsInterface(interfaceId);
     }
 }
