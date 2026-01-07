@@ -6,14 +6,22 @@ require("dotenv").config();
 module.exports = {
     solidity: {
         compilers: [
-            { version: "0.8.20" },
+            {
+                version: "0.8.20",
+                settings: {
+                    optimizer: {
+                        enabled: true,
+                        runs: 1
+                    }
+                }
+            },
             {
                 version: "0.8.24",
                 settings: {
                     evmVersion: "cancun",
                     optimizer: {
                         enabled: true,
-                        runs: 200
+                        runs: 1
                     }
                 }
             }

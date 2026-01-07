@@ -9,6 +9,8 @@ import NFTGallery from './components/NFTGallery';
 import Chat from './components/Chat';
 import Leaderboard from './components/Leaderboard';
 import Portfolio from './components/Portfolio';
+import TermsOfService from './components/TermsOfService';
+import PrivacyPolicy from './components/PrivacyPolicy';
 import { NotificationManager } from './components/NotificationManager';
 import { Toaster } from 'react-hot-toast';
 import { useAccount } from 'wagmi';
@@ -36,6 +38,8 @@ function App() {
       case 'nfts': return <NFTGallery />;
       case 'chat': return <Chat initialPeerAddress={chatPeerAddress} onClearedAddress={() => setChatPeerAddress(null)} />;
       case 'leaderboard': return <Leaderboard />;
+      case 'tos': return <TermsOfService onBack={() => setActiveTab('dashboard')} />;
+      case 'privacy': return <PrivacyPolicy onBack={() => setActiveTab('dashboard')} />;
       default: return <Dashboard />;
     }
   };
@@ -109,6 +113,15 @@ function App() {
           </motion.div>
         </AnimatePresence>
       </main>
+
+      <footer style={{ marginTop: 'auto', padding: '40px 60px', borderTop: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
+        <div style={{ opacity: 0.5, fontSize: '0.9rem' }}>© 2026 PolyLance Protocol. Built on Polygon.</div>
+        <div style={{ display: 'flex', gap: '24px' }}>
+          <button onClick={() => setActiveTab('tos')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.85rem' }}>Terms</button>
+          <button onClick={() => setActiveTab('privacy')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.85rem' }}>Privacy</button>
+          <a href="https://polygon.technology" target="_blank" rel="noreferrer" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textDecoration: 'none' }}>Polygon</a>
+        </div>
+      </footer>
 
       <style dangerouslySetInnerHTML={{
         __html: `

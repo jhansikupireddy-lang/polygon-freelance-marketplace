@@ -104,6 +104,7 @@ contract FreelanceEscrow is
     mapping(uint256 => Review) public reviews;
     mapping(uint256 => Application[]) public jobApplications;
     mapping(uint256 => mapping(address => bool)) public hasApplied;
+    mapping(address => mapping(address => uint256)) public pendingRefunds; // user => token => amount
     
     uint256 public jobCount;
     uint256 public constant APPLICATION_STAKE_PERCENT = 5; 
@@ -129,6 +130,8 @@ contract FreelanceEscrow is
     event ReviewSubmitted(uint256 indexed jobId, address indexed reviewer, uint8 rating, string comment);
     event CCIPMessageReceived(bytes32 indexed messageId, uint64 indexed sourceChainSelector, address sender);
     event InsurancePaid(uint256 indexed jobId, uint256 amount);
+    event RefundClaimed(address indexed user, address indexed token, uint256 amount);
+    event VaultUpdated(address indexed oldVault, address indexed newVault);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -181,6 +184,8 @@ contract FreelanceEscrow is
     }
 
     function setVault(address _vault) external onlyOwner {
+        require(_vault != address(0), "Invalid address");
+        emit VaultUpdated(vault, _vault);
         vault = _vault;
     }
 
@@ -349,7 +354,7 @@ contract FreelanceEscrow is
      * @dev Client picks a freelancer from the applicants.
      * Unselected applicants get their stake refunded.
      */
-    function pickFreelancer(uint256 jobId, address freelancer) external nonReentrant {
+    function pickFreelancer(uint256 jobId, address freelancer) external whenNotPaused nonReentrant {
         Job storage job = jobs[jobId];
         require(_msgSender() == job.client, "Only client can pick");
         require(job.status == JobStatus.Created, "Invalid status");
@@ -364,12 +369,23 @@ contract FreelanceEscrow is
             if (apps[i].freelancer == freelancer) {
                 job.freelancerStake = apps[i].stake;
             } else {
-                _sendFunds(apps[i].freelancer, job.token, apps[i].stake);
+                // Pull-over-Push: accrue refund instead of sending
+                pendingRefunds[apps[i].freelancer][job.token] += apps[i].stake;
             }
         }
 
         emit FreelancerSelected(jobId, freelancer);
         emit JobAccepted(jobId, freelancer, job.freelancerStake);
+    }
+
+    function claimRefund(address token) external nonReentrant {
+        uint256 amount = pendingRefunds[_msgSender()][token];
+        require(amount > 0, "No refund available");
+
+        pendingRefunds[_msgSender()][token] = 0;
+        _sendFunds(_msgSender(), token, amount);
+
+        emit RefundClaimed(_msgSender(), token, amount);
     }
 
     function releaseFunds(uint256 jobId) external whenNotPaused nonReentrant {
