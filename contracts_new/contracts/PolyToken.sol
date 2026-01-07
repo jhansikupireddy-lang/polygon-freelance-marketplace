@@ -3,14 +3,16 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 
-contract PolyToken is ERC20Votes, ERC20Permit, AccessControl {
+contract PolyToken is ERC20Votes, ERC20Permit, AccessControl, Ownable {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
     constructor(address initialAdmin) 
         ERC20("PolyLance Token", "POLY") 
         ERC20Permit("PolyLance Token")
+        Ownable(initialAdmin)
     {
         _grantRole(DEFAULT_ADMIN_ROLE, initialAdmin);
         _grantRole(MINTER_ROLE, initialAdmin);

@@ -7,6 +7,7 @@ import "@openzeppelin/contracts-upgradeable/token/common/ERC2981Upgradeable.sol"
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -32,6 +33,7 @@ contract FreelanceEscrow is
     OwnableUpgradeable, 
     AccessControlUpgradeable,
     ReentrancyGuardUpgradeable, 
+    PausableUpgradeable,
     UUPSUpgradeable,
     IAny2EVMMessageReceiver,
     OApp
@@ -47,10 +49,12 @@ contract FreelanceEscrow is
     address public ccipRouter; 
     address public insurancePool;
     address public polyToken;
-    uint256 public constant REWARD_AMOUNT = 100 * 10**18;
+    address public vault;
     
+    uint256 public constant REWARD_AMOUNT = 100 * 10**18;
     uint256 public constant FREELANCER_STAKE_PERCENT = 10; 
     uint256 public constant INSURANCE_FEE_BPS = 100; // 1%
+    uint256 public platformFeeBps; // e.g., 250 for 2.5%
 
     mapping(uint64 => bool) public allowlistedSourceChains;
     mapping(address => bool) public allowlistedSenders;
@@ -116,6 +120,7 @@ contract FreelanceEscrow is
         __Ownable_init(initialOwner);
         __AccessControl_init();
         __ReentrancyGuard_init();
+        __Pausable_init();
         __UUPSUpgradeable_init();
         __OApp_init(_lzEndpoint);
 
@@ -127,6 +132,8 @@ contract FreelanceEscrow is
         _trustedForwarder = trustedForwarder;
         ccipRouter = _ccipRouter;
         insurancePool = _insurancePool;
+        vault = initialOwner;
+        platformFeeBps = 250; // 2.5% default
     }
 
     // --- Chainlink Automation ---
@@ -191,12 +198,21 @@ contract FreelanceEscrow is
         polyToken = _token;
     }
 
-    function allowlistSourceChain(uint64 _sourceChainSelector, bool allowed) external onlyOwner {
-        allowlistedSourceChains[_sourceChainSelector] = allowed;
+    function setVault(address _vault) external onlyOwner {
+        vault = _vault;
     }
 
-    function allowlistSender(address _sender, bool allowed) external onlyOwner {
-        allowlistedSenders[_sender] = allowed;
+    function setPlatformFee(uint256 _bps) external onlyOwner {
+        require(_bps <= 1000, "Fee too high");
+        platformFeeBps = _bps;
+    }
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
     }
 
     // --- CCIP Implementation ---
@@ -254,7 +270,7 @@ contract FreelanceEscrow is
         uint256 amount, 
         string memory _initialMetadataUri,
         uint256 durationDays
-    ) external payable nonReentrant {
+    ) external payable whenNotPaused nonReentrant {
         address sender = _msgSender();
         if (token == address(0)) {
             require(msg.value == amount, "Amount mismatch");
@@ -266,7 +282,60 @@ contract FreelanceEscrow is
         _createJobInternal(sender, freelancer, token, amount, _initialMetadataUri, deadline);
     }
 
-    function releaseFunds(uint256 jobId) external nonReentrant {
+    function createJobWithMilestones(
+        address freelancer,
+        address token,
+        uint256 totalAmount,
+        string memory _initialMetadataUri,
+        uint256 durationDays,
+        uint256[] calldata milestoneAmounts,
+        string[] calldata milestoneDescriptions
+    ) external payable whenNotPaused nonReentrant {
+        require(milestoneAmounts.length == milestoneDescriptions.length, "Length mismatch");
+        uint256 calculatedTotal = 0;
+        for (uint256 i = 0; i < milestoneAmounts.length; i++) {
+            calculatedTotal += milestoneAmounts[i];
+        }
+        require(calculatedTotal == totalAmount, "Total mismatch");
+
+        address sender = _msgSender();
+        if (token == address(0)) {
+            require(msg.value == totalAmount, "Amount mismatch");
+        } else {
+            IERC20(token).safeTransferFrom(sender, address(this), totalAmount);
+        }
+
+        uint256 deadline = durationDays > 0 ? block.timestamp + (durationDays * 1 days) : 0;
+        _createJobInternal(sender, freelancer, token, totalAmount, _initialMetadataUri, deadline);
+        
+        uint256 jobId = jobCount;
+        jobs[jobId].milestoneCount = milestoneAmounts.length;
+        for (uint256 i = 0; i < milestoneAmounts.length; i++) {
+            jobMilestones[jobId][i] = Milestone({
+                amount: milestoneAmounts[i],
+                description: milestoneDescriptions[i],
+                isReleased: false
+            });
+        }
+    }
+
+    function releaseMilestone(uint256 jobId, uint256 milestoneIndex) external whenNotPaused nonReentrant {
+        Job storage job = jobs[jobId];
+        require(_msgSender() == job.client, "Not client");
+        require(milestoneIndex < job.milestoneCount, "Invalid index");
+        Milestone storage m = jobMilestones[jobId][milestoneIndex];
+        require(!m.isReleased, "Already released");
+
+        m.isReleased = true;
+        job.totalPaidOut += m.amount;
+        
+        _sendFunds(job.freelancer, job.token, m.amount);
+        emit MilestoneReleased(jobId, milestoneIndex, m.amount);
+    }
+
+    event MilestoneReleased(uint256 indexed jobId, uint256 milestoneIndex, uint256 amount);
+
+    function releaseFunds(uint256 jobId) external whenNotPaused nonReentrant {
         address sender = _msgSender();
         Job storage job = jobs[jobId];
         require(sender == job.client, "Not client");
@@ -277,7 +346,8 @@ contract FreelanceEscrow is
         job.status = JobStatus.Completed;
 
         uint256 insuranceFee = (job.amount * INSURANCE_FEE_BPS) / 10000;
-        uint256 remainingAmount = job.amount - job.totalPaidOut - insuranceFee;
+        uint256 platformFee = (job.amount * platformFeeBps) / 10000;
+        uint256 remainingAmount = job.amount - job.totalPaidOut - insuranceFee - platformFee;
         uint256 totalPayout = remainingAmount + job.freelancerStake;
 
         if (insuranceFee > 0 && insurancePool != address(0)) {
@@ -288,6 +358,10 @@ contract FreelanceEscrow is
                 IInsurancePool(insurancePool).deposit(job.token, insuranceFee);
             }
             emit InsurancePaid(jobId, insuranceFee);
+        }
+
+        if (platformFee > 0 && vault != address(0)) {
+            _sendFunds(vault, job.token, platformFee);
         }
 
         if (totalPayout > 0) {

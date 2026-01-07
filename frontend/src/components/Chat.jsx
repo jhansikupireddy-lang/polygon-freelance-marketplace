@@ -5,7 +5,7 @@ import { useEthersSigner } from '../hooks/useEthersSigner';
 import { useAccount } from 'wagmi';
 import { MessageSquare, Send, User, Loader2 } from 'lucide-react';
 
-export default function Chat() {
+export default function Chat({ initialPeerAddress, onClearedAddress }) {
     const { address } = useAccount();
     const signer = useEthersSigner();
 
@@ -14,7 +14,14 @@ export default function Chat() {
     const [error, setError] = useState(null);
     const [conversations, setConversations] = useState([]);
     const [selectedConversation, setSelectedConversation] = useState(null);
-    const [peerAddress, setPeerAddress] = useState('');
+    const [peerAddress, setPeerAddress] = useState(initialPeerAddress || '');
+
+    useEffect(() => {
+        if (initialPeerAddress) {
+            setPeerAddress(initialPeerAddress);
+            // Optionally auto-select if already in list or auto-start
+        }
+    }, [initialPeerAddress]);
 
     const handleInitialize = async () => {
         if (!signer) return;

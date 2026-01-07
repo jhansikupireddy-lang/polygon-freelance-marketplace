@@ -2,9 +2,11 @@ import {
     JobCreated as JobCreatedEvent,
     WorkSubmitted as WorkSubmittedEvent,
     FundsReleased as FundsReleasedEvent,
-    JobDisputed as JobDisputedEvent
+    JobDisputed as JobDisputedEvent,
+    MilestoneReleased as MilestoneReleasedEvent,
+    MilestonesDefined as MilestonesDefinedEvent
 } from "../generated/FreelanceEscrow/FreelanceEscrow"
-import { Job, User } from "../generated/schema"
+import { Job, User, Milestone } from "../generated/schema"
 import { BigInt } from "@graphprotocol/graph-ts"
 
 export function handleJobCreated(event: JobCreatedEvent): void {
@@ -59,5 +61,30 @@ export function handleJobDisputed(event: JobDisputedEvent): void {
         job.status = 3 // Disputed
         job.updatedAt = event.block.timestamp
         job.save()
+    }
+}
+
+export function handleMilestonesDefined(event: MilestonesDefinedEvent): void {
+    let amounts = event.params.amounts
+    let descriptions = event.params.descriptions
+
+    for (let i = 0; i < amounts.length; i++) {
+        let milestoneId = event.params.jobId.toString() + "-" + i.toString()
+        let milestone = new Milestone(milestoneId)
+        milestone.job = event.params.jobId.toString()
+        milestone.index = BigInt.fromI32(i)
+        milestone.amount = amounts[i]
+        milestone.description = descriptions[i]
+        milestone.isReleased = false
+        milestone.save()
+    }
+}
+
+export function handleMilestoneReleased(event: MilestoneReleasedEvent): void {
+    let milestoneId = event.params.jobId.toString() + "-" + event.params.milestoneId.toString()
+    let milestone = Milestone.load(milestoneId)
+    if (milestone) {
+        milestone.isReleased = true
+        milestone.save()
     }
 }

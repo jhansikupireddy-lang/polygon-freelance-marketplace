@@ -8,8 +8,19 @@ type Job @entity {
   resultUri: String
   nftId: BigInt
   paid: Boolean!
+  platformFee: BigInt
   createdAt: BigInt!
   updatedAt: BigInt!
+  milestones: [Milestone!]! @derivedFrom(field: "job")
+}
+
+type Milestone @entity {
+  id: ID! # jobId + "-" + index
+  job: Job!
+  index: BigInt!
+  amount: BigInt!
+  description: String!
+  isReleased: Boolean!
 }
 
 type User @entity {

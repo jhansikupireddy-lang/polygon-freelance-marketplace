@@ -7,6 +7,7 @@ import "@openzeppelin/contracts-upgradeable/token/common/ERC2981Upgradeable.sol"
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -22,6 +23,7 @@ interface IPolyToken is IERC20 {
 
 interface IInsurancePool {
     function deposit(address token, uint256 amount) external;
+    function depositNative() external payable;
 }
 
 interface IFreelanceSBT {
@@ -40,6 +42,7 @@ contract FreelanceEscrow is
     OwnableUpgradeable, 
     AccessControlUpgradeable,
     ReentrancyGuardUpgradeable, 
+    PausableUpgradeable,
     UUPSUpgradeable,
     IAny2EVMMessageReceiver,
     OApp
@@ -56,7 +59,9 @@ contract FreelanceEscrow is
     address public insurancePool;
     address public polyToken;
     address public sbtContract;
+    address public vault;
     uint256 public constant REWARD_AMOUNT = 100 * 10**18;
+    uint256 public platformFeeBps; // e.g., 250 for 2.5%
     
     mapping(address => bool) public whitelistedTokens;
     
@@ -66,7 +71,7 @@ contract FreelanceEscrow is
     mapping(uint64 => bool) public allowlistedSourceChains;
     mapping(address => bool) public allowlistedSenders;
 
-    enum JobStatus { Created, Accepted, Ongoing, Disputed, Completed, Cancelled }
+    enum JobStatus { Created, Accepted, Ongoing, Disputed, Arbitration, Completed, Cancelled }
 
     struct Milestone {
         uint256 amount;
@@ -115,9 +120,13 @@ contract FreelanceEscrow is
     event JobAccepted(uint256 indexed jobId, address indexed freelancer, uint256 stake);
     event WorkSubmitted(uint256 indexed jobId, string ipfsHash);
     event FundsReleased(uint256 indexed jobId, address indexed freelancer, uint256 amount, uint256 nftId);
+    event MilestoneReleased(uint256 indexed jobId, uint256 indexed milestoneId, uint256 amount);
+    event MilestonesDefined(uint256 indexed jobId, uint256[] amounts, string[] descriptions);
     event JobCancelled(uint256 indexed jobId);
     event JobDisputed(uint256 indexed jobId);
+    event DisputeRaised(uint256 indexed jobId, address indexed raiser);
     event Ruling(address indexed _arbitrator, uint256 indexed _disputeID, uint256 _ruling);
+    event ReviewSubmitted(uint256 indexed jobId, address indexed reviewer, uint8 rating, string comment);
     event CCIPMessageReceived(bytes32 indexed messageId, uint64 indexed sourceChainSelector, address sender);
     event InsurancePaid(uint256 indexed jobId, uint256 amount);
 
@@ -139,6 +148,7 @@ contract FreelanceEscrow is
         __Ownable_init(initialOwner);
         __AccessControl_init();
         __ReentrancyGuard_init();
+        __Pausable_init();
         __UUPSUpgradeable_init();
         __OApp_init(_lzEndpoint);
 
@@ -150,6 +160,8 @@ contract FreelanceEscrow is
         _trustedForwarder = trustedForwarder;
         ccipRouter = _ccipRouter;
         insurancePool = _insurancePool;
+        vault = initialOwner;
+        platformFeeBps = 250; // 2.5% default
     }
 
     function setSBTContract(address _sbt) external onlyOwner {
@@ -166,6 +178,23 @@ contract FreelanceEscrow is
 
     function setPolyToken(address _token) external onlyOwner {
         polyToken = _token;
+    }
+
+    function setVault(address _vault) external onlyOwner {
+        vault = _vault;
+    }
+
+    function setPlatformFee(uint256 _bps) external onlyOwner {
+        require(_bps <= 1000, "Fee too high");
+        platformFeeBps = _bps;
+    }
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
     }
 
     function _contextSuffixLength() internal view virtual override(ContextUpgradeable) returns (uint256) {
@@ -241,21 +270,59 @@ contract FreelanceEscrow is
         uint256 amount, 
         string memory _ipfsHash,
         uint256 durationDays
-    ) external nonReentrant {
-        require(token != address(0), "Native tokens not supported");
-        require(whitelistedTokens[token], "Token not whitelisted");
-        address sender = _msgSender();
-        IERC20(token).transferFrom(sender, address(this), amount);
-
+    ) external payable whenNotPaused nonReentrant {
+        if (token != address(0)) {
+            require(whitelistedTokens[token], "Token not whitelisted");
+            IERC20(token).safeTransferFrom(_msgSender(), address(this), amount);
+        } else {
+            require(msg.value >= amount, "Insufficient MATIC");
+        }
+        
         uint256 deadline = durationDays > 0 ? block.timestamp + (durationDays * 1 days) : 0;
-        _createJobInternal(sender, freelancer, token, amount, _ipfsHash, deadline);
+        _createJobInternal(_msgSender(), freelancer, token, amount, _ipfsHash, deadline);
+    }
+
+    function createJobWithMilestones(
+        address freelancer,
+        address token,
+        uint256 amount,
+        string memory _ipfsHash,
+        uint256[] memory milestoneAmounts,
+        string[] memory milestoneDescs
+    ) external payable whenNotPaused nonReentrant {
+        uint256 totalMilestoneAmount = 0;
+        for (uint256 i = 0; i < milestoneAmounts.length; i++) {
+            totalMilestoneAmount += milestoneAmounts[i];
+        }
+        require(totalMilestoneAmount == amount, "Amounts mismatch");
+
+        if (token != address(0)) {
+            require(whitelistedTokens[token], "Token not whitelisted");
+            IERC20(token).safeTransferFrom(_msgSender(), address(this), amount);
+        } else {
+            require(msg.value >= amount, "Insufficient MATIC");
+        }
+
+        uint256 deadline = 0; // Default to 0 for milestones unless specified
+        _createJobInternal(_msgSender(), freelancer, token, amount, _ipfsHash, deadline);
+        
+        uint256 jobId = jobCount;
+        jobs[jobId].milestoneCount = milestoneAmounts.length;
+        for (uint256 i = 0; i < milestoneAmounts.length; i++) {
+            jobMilestones[jobId][i] = Milestone({
+                amount: milestoneAmounts[i],
+                description: milestoneDescs[i],
+                isReleased: false
+            });
+        }
+        emit MilestonesDefined(jobId, milestoneAmounts, milestoneDescs);
     }
 
     /**
      * @dev Freelancers apply for a job by providing a small stake.
      * Prevents spam and ensures commitment.
      */
-    function applyForJob(uint256 jobId) external nonReentrant {
+    function applyForJob(uint256 jobId) external payable nonReentrant {
         Job storage job = jobs[jobId];
         require(job.status == JobStatus.Created, "Not in application phase");
         require(job.freelancer == address(0), "Job already assigned");
@@ -263,7 +330,11 @@ contract FreelanceEscrow is
         require(!hasApplied[jobId][_msgSender()], "Already applied");
 
         uint256 stake = (job.amount * APPLICATION_STAKE_PERCENT) / 100;
-        IERC20(job.token).transferFrom(_msgSender(), address(this), stake);
+        if (job.token != address(0)) {
+            IERC20(job.token).safeTransferFrom(_msgSender(), address(this), stake);
+        } else {
+            require(msg.value >= stake, "Insufficient MATIC stake");
+        }
 
         jobApplications[jobId].push(Application({
             freelancer: _msgSender(),
@@ -301,7 +372,7 @@ contract FreelanceEscrow is
         emit JobAccepted(jobId, freelancer, job.freelancerStake);
     }
 
-    function releaseFunds(uint256 jobId) external nonReentrant {
+    function releaseFunds(uint256 jobId) external whenNotPaused nonReentrant {
         Job storage job = jobs[jobId];
         require(_msgSender() == job.client, "Not client");
         require(job.status == JobStatus.Ongoing || job.status == JobStatus.Accepted, "Invalid status");
@@ -311,16 +382,26 @@ contract FreelanceEscrow is
         job.status = JobStatus.Completed;
 
         uint256 insuranceFee = (job.amount * INSURANCE_FEE_BPS) / 10000;
-        uint256 remainingAmount = job.amount - job.totalPaidOut - insuranceFee;
+        uint256 platformFee = (job.amount * platformFeeBps) / 10000;
+        uint256 remainingAmount = job.amount - job.totalPaidOut - insuranceFee - platformFee;
         uint256 totalPayout = remainingAmount + job.freelancerStake;
 
         if (insuranceFee > 0 && insurancePool != address(0)) {
-            IERC20(job.token).transfer(insurancePool, insuranceFee);
+            if (job.token == address(0)) {
+                IInsurancePool(insurancePool).depositNative{value: insuranceFee}();
+            } else {
+                IERC20(job.token).safeIncreaseAllowance(insurancePool, insuranceFee);
+                IInsurancePool(insurancePool).deposit(job.token, insuranceFee);
+            }
             emit InsurancePaid(jobId, insuranceFee);
         }
 
+        if (platformFee > 0 && vault != address(0)) {
+            _sendFunds(vault, job.token, platformFee);
+        }
+
         if (totalPayout > 0) {
-            IERC20(job.token).transfer(job.freelancer, totalPayout);
+            _sendFunds(job.freelancer, job.token, totalPayout);
         }
 
         uint256 tokenId = _nextTokenId++;
@@ -332,14 +413,33 @@ contract FreelanceEscrow is
         emit FundsReleased(jobId, job.freelancer, totalPayout, tokenId);
     }
 
-    function acceptJob(uint256 jobId) external nonReentrant {
+    function releaseMilestone(uint256 jobId, uint256 milestoneId) external whenNotPaused nonReentrant {
+        Job storage job = jobs[jobId];
+        require(_msgSender() == job.client, "Not client");
+        require(milestoneId < job.milestoneCount, "Invalid milestone");
+        
+        Milestone storage m = jobMilestones[jobId][milestoneId];
+        require(!m.isReleased, "Already released");
+
+        m.isReleased = true;
+        job.totalPaidOut += m.amount;
+
+        _sendFunds(job.freelancer, job.token, m.amount);
+        emit MilestoneReleased(jobId, milestoneId, m.amount);
+    }
+
+    function acceptJob(uint256 jobId) external payable nonReentrant {
         Job storage job = jobs[jobId];
         require(job.status == JobStatus.Created, "Not created");
         require(job.freelancer != address(0), "No freelancer assigned");
         require(_msgSender() == job.freelancer, "Not freelancer");
 
         uint256 stake = (job.amount * FREELANCER_STAKE_PERCENT) / 100;
-        IERC20(job.token).transferFrom(_msgSender(), address(this), stake);
+        if (job.token != address(0)) {
+            IERC20(job.token).safeTransferFrom(_msgSender(), address(this), stake);
+        } else {
+            require(msg.value >= stake, "Insufficient MATIC stake");
+        }
 
         job.freelancerStake = stake;
         job.status = JobStatus.Accepted;
@@ -354,6 +454,33 @@ contract FreelanceEscrow is
         job.ipfsHash = ipfsHash;
         job.status = JobStatus.Ongoing;
         emit WorkSubmitted(jobId, ipfsHash);
+    }
+
+    function dispute(uint256 jobId) external payable nonReentrant {
+        Job storage job = jobs[jobId];
+        require(job.status == JobStatus.Ongoing || job.status == JobStatus.Accepted, "Invalid status");
+        require(_msgSender() == job.client || _msgSender() == job.freelancer, "Not authorized");
+
+        job.status = JobStatus.Arbitration;
+        emit DisputeRaised(jobId, _msgSender());
+    }
+
+    function resolveDispute(uint256 jobId, address winner, uint256 freelancerPayout) external onlyOwner nonReentrant {
+        Job storage job = jobs[jobId];
+        require(job.status == JobStatus.Arbitration, "Not in arbitration");
+
+        job.paid = true;
+        job.status = JobStatus.Completed;
+
+        _sendFunds(winner, job.token, freelancerPayout);
+        
+        // Refund remaining to client if any
+        uint256 totalEscrow = job.amount + job.freelancerStake;
+        if (totalEscrow > freelancerPayout) {
+            _sendFunds(job.client, job.token, totalEscrow - freelancerPayout);
+        }
+
+        emit FundsReleased(jobId, winner, freelancerPayout, 0); // Simplified
     }
 
     function submitReview(uint256 jobId, uint8 rating, string calldata ipfsHash) external nonReentrant {
@@ -371,6 +498,7 @@ contract FreelanceEscrow is
         if (sbtContract != address(0)) {
             IFreelanceSBT(sbtContract).safeMint(job.freelancer, ipfsHash);
         }
+        emit ReviewSubmitted(jobId, _msgSender(), rating, ipfsHash);
     }
 
     function rule(uint256 _disputeID, uint256 _ruling) external {
@@ -392,7 +520,12 @@ contract FreelanceEscrow is
     }
 
     function _sendFunds(address to, address token, uint256 amount) internal {
-        IERC20(token).transfer(to, amount);
+        if (token == address(0)) {
+            (bool success, ) = payable(to).call{value: amount}("");
+            require(success, "Transfer failed");
+        } else {
+            IERC20(token).safeTransfer(to, amount);
+        }
     }
 
     function _rewardParties(uint256 jobId) internal {

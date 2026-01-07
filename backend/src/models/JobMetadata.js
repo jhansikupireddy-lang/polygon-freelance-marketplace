@@ -8,6 +8,11 @@ const jobMetadataSchema = new mongoose.Schema({
     tags: { type: String },
     review: { type: String },
     rating: { type: Number },
+    milestones: [{
+        amount: String,
+        description: String,
+        isReleased: { type: Boolean, default: false }
+    }]
 }, { timestamps: true });
 
 export const JobMetadata = mongoose.model('JobMetadata', jobMetadataSchema);

@@ -27,11 +27,11 @@ export async function startSyncer() {
     // Watch for JobCreated events
     client.watchEvent({
         address: CONTRACT_ADDRESS,
-        event: parseAbiItem('event JobCreated(uint256 indexed jobId, address indexed client, address indexed freelancer, uint256 amount)'),
+        event: parseAbiItem('event JobCreated(uint256 indexed jobId, address indexed client, address indexed freelancer, uint256 amount, uint256 deadline)'),
         onLogs: async (logs) => {
             for (const log of logs) {
-                const { jobId, client: clientAddr, freelancer, amount } = log.args;
-                console.log(`New Job Created On-Chain: ID ${jobId}, Client ${clientAddr}`);
+                const { jobId, client: clientAddr, freelancer, amount, deadline } = log.args;
+                console.log(`New Job Created On-Chain: ID ${jobId}, Client ${clientAddr}, Deadline: ${new Date(Number(deadline) * 1000).toLocaleString()}`);
 
                 try {
                     const existing = await JobMetadata.findOne({ jobId: Number(jobId) });
@@ -114,7 +114,7 @@ export async function startSyncer() {
         }
     });
 
-    // Watch for ReviewSubmitted
+    // Watch for ReviewSubmitted (PolyLance specific)
     client.watchEvent({
         address: CONTRACT_ADDRESS,
         event: parseAbiItem('event ReviewSubmitted(uint256 indexed jobId, address indexed reviewer, uint8 rating, string comment)'),
@@ -122,13 +122,14 @@ export async function startSyncer() {
             for (const log of logs) {
                 try {
                     const { jobId, rating, comment } = log.args;
-                    console.log(`New Review for Job ${jobId}: ${rating} stars`);
+                    console.log(`Review Received: Job ${jobId}, Rating: ${rating}`);
                     await JobMetadata.findOneAndUpdate(
                         { jobId: Number(jobId) },
                         { rating: Number(rating), review: comment },
                         { upsert: true }
                     );
 
+                    // Update freelancer reputation logic
                     const job = await client.readContract({
                         address: CONTRACT_ADDRESS,
                         abi: abi,
@@ -141,17 +142,36 @@ export async function startSyncer() {
                     if (profile) {
                         profile.ratingSum += Number(rating);
                         profile.ratingCount += 1;
-
+                        // Recalculate score...
                         const avgRating = profile.ratingCount > 0 ? profile.ratingSum / profile.ratingCount : 0;
-                        const disputeRate = profile.completedJobs > 0 ? profile.disputedJobs / profile.completedJobs : 0;
-                        const score = (profile.totalEarned) * (avgRating / 5) * (Math.max(0, 1 - disputeRate));
+                        const score = (profile.totalEarned) * (avgRating / 5);
                         profile.reputationScore = Math.floor(score * 10);
-
                         await profile.save();
-                        console.log(`Updated reputation for ${freelancer} (Review: ${rating})`);
                     }
                 } catch (error) {
                     console.error('Error handling ReviewSubmitted:', error);
+                }
+            }
+        }
+    });
+
+    // Watch for MilestoneReleased
+    client.watchEvent({
+        address: CONTRACT_ADDRESS,
+        event: parseAbiItem('event MilestoneReleased(uint256 indexed jobId, uint256 indexed milestoneId, uint256 amount)'),
+        onLogs: async (logs) => {
+            for (const log of logs) {
+                try {
+                    const { jobId, milestoneId, amount } = log.args;
+                    console.log(`Milestone Released: Job ${jobId}, MS ${milestoneId}, Amount ${amount}`);
+
+                    const jobMeta = await JobMetadata.findOne({ jobId: Number(jobId) });
+                    if (jobMeta && jobMeta.milestones && jobMeta.milestones[Number(milestoneId)]) {
+                        jobMeta.milestones[Number(milestoneId)].isReleased = true;
+                        await jobMeta.save();
+                    }
+                } catch (error) {
+                    console.error('Error handling MilestoneReleased:', error);
                 }
             }
         }

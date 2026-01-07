@@ -1,0 +1,13 @@
+WARNING: You are currently using Node.js v22.19.0, which is not supported by Hardhat. This can lead to unexpected behavior. See https://hardhat.org/nodejs-versions
+
+
+ParserError: Expected identifier but got 'storage'
+   --> contracts/FreelanceEscrow.sol:447:13:
+    |
+447 |         Job storage job = jobs[jobId];
+    |             ^^^^^^^
+
+
+Error HH600: Compilation failed
+
+For more info go to https://hardhat.org/HH600 or run Hardhat with --show-stack-traces

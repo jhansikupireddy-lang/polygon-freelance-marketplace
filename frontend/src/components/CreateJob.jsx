@@ -6,6 +6,7 @@ import StripeOnrampModal from './StripeOnrampModal';
 import FreelanceEscrowABI from '../contracts/FreelanceEscrow.json';
 import { CONTRACT_ADDRESS, SUPPORTED_TOKENS } from '../constants';
 import { api } from '../services/api';
+import { uploadJSONToIPFS } from '../utils/ipfs';
 
 
 function CreateJob({ onJobCreated }) {
@@ -66,6 +67,27 @@ function CreateJob({ onJobCreated }) {
 
         const rawAmount = parseUnits(amount, selectedToken.decimals);
 
+        // 1. Upload metadata to IPFS
+        let ipfsHash = '';
+        try {
+            const metadata = {
+                title,
+                description,
+                category,
+                client: address,
+                freelancer,
+                amount,
+                token: selectedToken.symbol,
+                milestones: milestones.map(m => ({ amount: m.amount, description: m.description }))
+            };
+            ipfsHash = await uploadJSONToIPFS(metadata);
+            console.log('Metadata uploaded to IPFS:', ipfsHash);
+        } catch (err) {
+            console.error('IPFS upload failed:', err);
+            // Fallback to description string if IPFS fails, though CID is preferred
+            ipfsHash = description;
+        }
+
         if (milestones.length > 1 || (milestones[0].amount && milestones[0].description)) {
             // Milestone flow
             const milestoneAmounts = milestones.map(m => parseUnits(m.amount, selectedToken.decimals));
@@ -74,7 +96,7 @@ function CreateJob({ onJobCreated }) {
                 address: CONTRACT_ADDRESS,
                 abi: FreelanceEscrowABI.abi,
                 functionName: 'createJobWithMilestones',
-                args: [freelancer, selectedToken.address, rawAmount, description, milestoneAmounts, milestoneDescs],
+                args: [freelancer, selectedToken.address, rawAmount, ipfsHash, milestoneAmounts, milestoneDescs],
                 value: selectedToken.address === '0x0000000000000000000000000000000000000000' ? rawAmount : 0n,
             });
         } else {
@@ -83,7 +105,7 @@ function CreateJob({ onJobCreated }) {
                 address: CONTRACT_ADDRESS,
                 abi: FreelanceEscrowABI.abi,
                 functionName: 'createJob',
-                args: [freelancer, selectedToken.address, rawAmount, description],
+                args: [freelancer, selectedToken.address, rawAmount, ipfsHash, 0], // added 0 for durationDays
                 value: selectedToken.address === '0x0000000000000000000000000000000000000000' ? rawAmount : 0n,
             });
         }

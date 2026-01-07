@@ -13,11 +13,14 @@ import { AlertCircle } from 'lucide-react';
 
 const statusLabels = ['Created', 'Accepted', 'Ongoing', 'Disputed', 'Completed', 'Cancelled'];
 
-function JobsList({ onUserClick }) {
+function JobsList({ onUserClick, onSelectChat }) {
     const { address } = useAccount();
     const [filter, setFilter] = React.useState('All');
     const [searchQuery, setSearchQuery] = React.useState('');
     const [minBudget, setMinBudget] = React.useState('');
+    const [sortBy, setSortBy] = React.useState('Newest');
+    const [statusFilter, setStatusFilter] = React.useState('All');
+
     const { data: jobCount } = useReadContract({
         address: CONTRACT_ADDRESS,
         abi: FreelanceEscrowABI.abi,
@@ -26,13 +29,17 @@ function JobsList({ onUserClick }) {
 
     const count = jobCount ? Number(jobCount) : 0;
 
+    // Create array of IDs and sort them (assuming descending for newest)
+    const jobIds = Array.from({ length: count }, (_, i) => i + 1);
+    if (sortBy === 'Newest') jobIds.reverse();
+
     return (
         <div>
             <div className="glass-card" style={{ marginBottom: '30px', padding: '20px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 150px 150px', gap: '20px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', gap: '15px', alignItems: 'center' }}>
                     <input
                         type="text"
-                        placeholder="Search jobs by title or description..."
+                        placeholder="Search jobs..."
                         className="input-field"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -49,6 +56,28 @@ function JobsList({ onUserClick }) {
                         <option>Design</option>
                         <option>Marketing</option>
                         <option>Writing</option>
+                    </select>
+                    <select
+                        className="input-field"
+                        style={{ margin: 0 }}
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                    >
+                        <option value="All">All Statuses</option>
+                        <option value="0">Open</option>
+                        <option value="2">Ongoing</option>
+                        <option value="4">Completed</option>
+                        <option value="3">Disputed</option>
+                    </select>
+                    <select
+                        className="input-field"
+                        style={{ margin: 0 }}
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                    >
+                        <option>Newest</option>
+                        <option>Oldest</option>
+                        <option>Budget: High to Low</option>
                     </select>
                     <input
                         type="number"
@@ -69,19 +98,21 @@ function JobsList({ onUserClick }) {
                         <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>Be the first to post a new gig on the marketplace.</p>
                     </div>
                 ) : (
-                    Array.from({ length: count }).map((_, i) => (
+                    jobIds.map((id, i) => (
                         <motion.div
-                            key={i + 1}
+                            key={id}
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: i * 0.1 }}
+                            transition={{ delay: i * 0.05 }}
                         >
                             <JobCard
-                                jobId={i + 1}
+                                jobId={id}
                                 categoryFilter={filter}
                                 searchQuery={searchQuery}
                                 minBudget={minBudget}
+                                statusFilter={statusFilter}
                                 onUserClick={onUserClick}
+                                onSelectChat={onSelectChat}
                             />
                         </motion.div>
                     ))
@@ -91,7 +122,7 @@ function JobsList({ onUserClick }) {
     );
 }
 
-function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick }) {
+function JobCard({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, onUserClick, onSelectChat }) {
     const { address } = useAccount();
     const [metadata, setMetadata] = React.useState(null);
     const [matchScore, setMatchScore] = React.useState(null);
@@ -134,6 +165,14 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick })
         fetchMetadata();
     }, [jobId, address]);
 
+    const [freelancerProfile, setFreelancerProfile] = React.useState(null);
+
+    React.useEffect(() => {
+        if (freelancer && freelancer !== '0x0000000000000000000000000000000000000000') {
+            api.getProfile(freelancer).then(setFreelancerProfile).catch(console.error);
+        }
+    }, [freelancer]);
+
     if (!job) return null;
 
     const [id, client, freelancer, token, amount, freelancerStake, totalPaidOut, status, resultUri, paid, milestoneCount] = job;
@@ -154,8 +193,9 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick })
         metadata?.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         metadata?.description?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesBudget = !minBudget || Number(formatUnits(amount, decimals)) >= Number(minBudget);
+    const matchesStatus = statusFilter === 'All' || status.toString() === statusFilter;
 
-    if (!matchesCategory || !matchesSearch || !matchesBudget) {
+    if (!matchesCategory || !matchesSearch || !matchesBudget || !matchesStatus) {
         return null;
     }
 
@@ -328,8 +368,41 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, onUserClick })
             </p>
 
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
-                <p style={{ cursor: 'pointer' }} onClick={() => onUserClick(client)}>Client: <UserLink address={client} /></p>
-                <p style={{ cursor: 'pointer' }} onClick={() => onUserClick(freelancer)}>Freelancer: <UserLink address={freelancer} /></p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <p style={{ cursor: 'pointer', margin: 0 }} onClick={() => onUserClick(client)}>
+                        Client: <UserLink address={client} />
+                    </p>
+                    {!isClient && (
+                        <button
+                            onClick={() => onSelectChat(client)}
+                            className="btn-secondary"
+                            style={{ padding: '4px 8px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        >
+                            <MessageSquare size={12} /> Chat
+                        </button>
+                    )}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <p style={{ cursor: 'pointer', margin: 0 }} onClick={() => onUserClick(freelancer)}>
+                            Freelancer: {freelancer === '0x0000000000000000000000000000000000000000' ? 'Unassigned' : <UserLink address={freelancer} />}
+                        </p>
+                        {freelancerProfile?.reputationScore > 0 && (
+                            <span className="badge" style={{ fontSize: '0.65rem', padding: '2px 6px', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', border: '1px solid #f59e0b' }}>
+                                ⭐ {freelancerProfile.reputationScore}
+                            </span>
+                        )}
+                    </div>
+                    {freelancer !== '0x0000000000000000000000000000000000000000' && !isFreelancer && (
+                        <button
+                            onClick={() => onSelectChat(freelancer)}
+                            className="btn-secondary"
+                            style={{ padding: '4px 8px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        >
+                            <MessageSquare size={12} /> Chat
+                        </button>
+                    )}
+                </div>
             </div>
 
             {resultUri && (

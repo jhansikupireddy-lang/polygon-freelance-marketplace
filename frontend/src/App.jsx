@@ -17,6 +17,12 @@ function App() {
   const { address } = useAccount();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [portfolioAddress, setPortfolioAddress] = useState(null);
+  const [chatPeerAddress, setChatPeerAddress] = useState(null);
+
+  const onSelectChat = (peer) => {
+    setChatPeerAddress(peer);
+    setActiveTab('chat');
+  };
 
   const renderContent = () => {
     if (portfolioAddress) {
@@ -25,10 +31,10 @@ function App() {
 
     switch (activeTab) {
       case 'dashboard': return <Dashboard />;
-      case 'jobs': return <JobsList onUserClick={(addr) => setPortfolioAddress(addr)} />;
-      case 'create': return <CreateJob />;
+      case 'jobs': return <JobsList onUserClick={(addr) => setPortfolioAddress(addr)} onSelectChat={onSelectChat} />;
+      case 'create': return <CreateJob onJobCreated={() => setActiveTab('jobs')} />;
       case 'nfts': return <NFTGallery />;
-      case 'chat': return <Chat />;
+      case 'chat': return <Chat initialPeerAddress={chatPeerAddress} onClearedAddress={() => setChatPeerAddress(null)} />;
       case 'leaderboard': return <Leaderboard />;
       default: return <Dashboard />;
     }
@@ -38,6 +44,7 @@ function App() {
     <div className="min-h-screen">
       <Toaster position="top-right" />
       <NotificationManager />
+      <ConnectionBanner />
       <nav style={{ padding: '0 60px', height: '80px' }}>
         <div className="logo" style={{ fontSize: '1.8rem', letterSpacing: '-1px' }}>PolyLance</div>
         <div style={{ display: 'flex', gap: '32px', alignItems: 'center' }}>
@@ -132,6 +139,29 @@ function App() {
       `}} />
     </div>
   );
+}
+
+function ConnectionBanner() {
+  const { isConnected, chain } = useAccount();
+  const isWrongChain = isConnected && chain?.id !== 80002; // Polygon Amoy ID is 80002
+
+  if (!isConnected) {
+    return (
+      <div style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '10px 60px', textAlign: 'center', fontSize: '0.9rem', borderBottom: '1px solid rgba(59, 130, 246, 0.2)' }}>
+        👋 Welcome! Please <strong>connect your wallet</strong> to start exploring opportunities.
+      </div>
+    );
+  }
+
+  if (isWrongChain) {
+    return (
+      <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '10px 60px', textAlign: 'center', fontSize: '0.9rem', borderBottom: '1px solid rgba(239, 68, 68, 0.2)' }}>
+        ⚠️ You are on the wrong network. Please switch to <strong>Polygon Amoy</strong>.
+      </div>
+    );
+  }
+
+  return null;
 }
 
 export default App;

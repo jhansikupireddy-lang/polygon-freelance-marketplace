@@ -4,7 +4,7 @@ schema:
 dataSources:
   - kind: ethereum
     name: FreelanceEscrow
-    network: mumbai
+    network: amoy
     source:
       address: "0x0000000000000000000000000000000000000000" # TODO: Replace with deployed address
       abi: FreelanceEscrow
@@ -16,6 +16,7 @@ dataSources:
       entities:
         - Job
         - User
+        - Milestone
       abis:
         - name: FreelanceEscrow
           file: ./abis/FreelanceEscrow.json
@@ -28,4 +29,6 @@ dataSources:
           handler: handleFundsReleased
         - event: JobDisputed(indexed uint256)
           handler: handleJobDisputed
+        - event: MilestoneReleased(indexed uint256,uint256,uint256)
+          handler: handleMilestoneReleased
       file: ./src/mapping.ts
