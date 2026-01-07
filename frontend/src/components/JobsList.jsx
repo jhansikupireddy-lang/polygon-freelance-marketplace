@@ -9,6 +9,8 @@ import { api } from '../services/api';
 import UserLink from './UserLink';
 import { checkRiskLevel } from '../utils/riskMitigation';
 import { AlertCircle } from 'lucide-react';
+import { useTransactionToast } from '../hooks/useTransactionToast';
+import { uploadJSONToIPFS } from '../utils/ipfs';
 
 
 const statusLabels = ['Created', 'Accepted', 'Ongoing', 'Disputed', 'Completed', 'Cancelled'];
@@ -140,8 +142,10 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, 
         functionName: 'arbitrator',
     });
 
-    const { data: hash, writeContract, isPending } = useWriteContract();
+    const { data: hash, writeContract, isPending, error } = useWriteContract();
     const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+    useTransactionToast(hash, isPending, isConfirming, isSuccess, error);
 
     React.useEffect(() => {
         if (isSuccess) refetch();
@@ -175,7 +179,7 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, 
 
     if (!job) return null;
 
-    const [id, client, freelancer, token, amount, freelancerStake, totalPaidOut, status, resultUri, paid, milestoneCount] = job;
+    const [id, client, freelancer, token, amount, freelancerStake, totalPaidOut, status, resultUri, paid, deadline, milestoneCount] = job;
     const tokenInfo = SUPPORTED_TOKENS.find(t => t.address.toLowerCase() === token.toLowerCase()) || SUPPORTED_TOKENS[0];
     const currency = tokenInfo.symbol;
     const decimals = tokenInfo.decimals;
@@ -214,9 +218,6 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, 
                 functionName: 'approve',
                 args: [CONTRACT_ADDRESS, requiredStake],
             });
-            alert('Stake approval sent!');
-        } catch (err) {
-            console.error(err);
         } finally {
             setIsApproving(false);
         }
@@ -242,14 +243,29 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, 
         });
     };
 
-    const handleSubmit = () => {
-        const uri = prompt('Enter your work result URI (IPFS link):');
-        if (!uri) return;
+    const handleSubmit = async () => {
+        const text = prompt('Enter your work summary or description:');
+        if (!text) return;
+
+        let ipfsHash = text;
+        try {
+            const metadata = {
+                type: 'work_submission',
+                jobId,
+                freelancer: address,
+                content: text,
+                timestamp: Date.now()
+            };
+            ipfsHash = await uploadJSONToIPFS(metadata);
+        } catch (err) {
+            console.error('IPFS upload failed, using raw text:', err);
+        }
+
         writeContract({
             address: CONTRACT_ADDRESS,
             abi: FreelanceEscrowABI.abi,
             functionName: 'submitWork',
-            args: [BigInt(jobId), uri],
+            args: [BigInt(jobId), ipfsHash],
         });
     };
 
@@ -289,15 +305,40 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, 
         });
     };
 
-    const handleReview = () => {
+    const handleRefundExpired = () => {
+        writeContract({
+            address: CONTRACT_ADDRESS,
+            abi: FreelanceEscrowABI.abi,
+            functionName: 'refundExpiredJob',
+            args: [BigInt(jobId)],
+        });
+    };
+
+    const handleReview = async () => {
         const rating = prompt('Enter rating (1-5):');
         const comment = prompt('Enter your feedback:');
         if (!rating || !comment) return;
+
+        let ipfsHash = comment;
+        try {
+            const metadata = {
+                type: 'review',
+                jobId,
+                client: address,
+                rating,
+                comment,
+                timestamp: Date.now()
+            };
+            ipfsHash = await uploadJSONToIPFS(metadata);
+        } catch (err) {
+            console.error('IPFS upload failed, using raw text:', err);
+        }
+
         writeContract({
             address: CONTRACT_ADDRESS,
             abi: FreelanceEscrowABI.abi,
             functionName: 'submitReview',
-            args: [BigInt(jobId), parseInt(rating), comment],
+            args: [BigInt(jobId), parseInt(rating), ipfsHash],
         });
     };
 
@@ -351,6 +392,11 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, 
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
                 <div className={`badge ${status === 3 ? 'dispute-badge' : ''}`}>{statusLabels[status]}</div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {deadline > 0n && (
+                        <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderColor: '#ef4444', border: '1px solid', fontSize: '0.7rem' }}>
+                            {Math.floor(Date.now() / 1000) > Number(deadline) ? 'Expired' : `Due: ${new Date(Number(deadline) * 1000).toLocaleDateString()}`}
+                        </span>
+                    )}
                     <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', borderColor: '#10b981', border: '1px solid' }}>🛡️ Insured</span>
                     <span style={{ fontWeight: '600' }}>{formatUnits(amount, decimals)} {currency}</span>
                 </div>
@@ -480,6 +526,12 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, 
             {isClient && status === 4 && (
                 <button onClick={handleReview} className="btn-secondary" style={{ width: '100%', marginTop: '15px' }}>
                     Leave a Review
+                </button>
+            )}
+
+            {isClient && Number(deadline) > 0 && Math.floor(Date.now() / 1000) > Number(deadline) && (status === 0 || status === 1) && (
+                <button onClick={handleRefundExpired} className="btn-secondary" style={{ width: '100%', marginTop: '15px', borderColor: '#ef4444', color: '#ef4444' }} disabled={isPending || isConfirming}>
+                    {isPending || isConfirming ? 'Processing...' : 'Reclaim Funds (Expired)'}
                 </button>
             )}
 

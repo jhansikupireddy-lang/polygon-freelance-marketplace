@@ -29,6 +29,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hot-toast": "^2.4.1",
+    "react-toastify": "^11.0.5",
     "siwe": "^2.3.2",
     "viem": "^2.43.3",
     "vite-plugin-node-polyfills": "^0.22.0",

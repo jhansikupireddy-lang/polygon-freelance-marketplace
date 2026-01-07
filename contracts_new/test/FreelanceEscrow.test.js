@@ -87,4 +87,34 @@ describe("FreelanceEscrow Verification", function () {
         // Vault should receive platform fee
         expect(finalVaultBalance - initialVaultBalance).to.equal(platformFee);
     });
+
+    it("Should allow client to reclaim funds after deadline", async function () {
+        const amount = ethers.parseEther("1.0");
+        const duration = 1; // 1 day
+        await escrow.connect(client).createJob(
+            freelancer.address,
+            ethers.ZeroAddress,
+            amount,
+            "ipfs://hash",
+            duration,
+            { value: amount }
+        );
+
+        // Advance time by 2 days
+        await ethers.provider.send("evm_increaseTime", [2 * 24 * 60 * 60]);
+        await ethers.provider.send("evm_mine");
+
+        const initialClientBalance = await ethers.provider.getBalance(client.address);
+
+        // Use a gas price for accurate balance checking
+        const tx = await escrow.connect(client).refundExpiredJob(1);
+        const receipt = await tx.wait();
+        const gasUsed = receipt.gasUsed * receipt.gasPrice;
+
+        const finalClientBalance = await ethers.provider.getBalance(client.address);
+        expect(finalClientBalance + gasUsed - initialClientBalance).to.equal(amount);
+
+        const job = await escrow.jobs(1);
+        expect(job.status).to.equal(6); // JobStatus.Cancelled
+    });
 });

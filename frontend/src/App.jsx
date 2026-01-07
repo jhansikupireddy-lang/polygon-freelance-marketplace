@@ -12,7 +12,8 @@ import Portfolio from './components/Portfolio';
 import TermsOfService from './components/TermsOfService';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import { NotificationManager } from './components/NotificationManager';
-import { Toaster } from 'react-hot-toast';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import { useAccount } from 'wagmi';
 
 function App() {
@@ -46,7 +47,7 @@ function App() {
 
   return (
     <div className="min-h-screen">
-      <Toaster position="top-right" />
+      <ToastContainer position="top-right" autoClose={5000} theme="dark" />
       <NotificationManager />
       <ConnectionBanner />
       <nav style={{ padding: '0 60px', height: '80px' }}>

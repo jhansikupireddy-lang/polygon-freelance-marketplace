@@ -1,6 +1,5 @@
-import React from 'react';
 import { useWatchContractEvent, useAccount } from 'wagmi';
-import { toast } from 'react-hot-toast';
+import { toast } from 'react-toastify';
 import FreelanceEscrowABI from '../contracts/FreelanceEscrow.json';
 import { CONTRACT_ADDRESS } from '../constants';
 import { useQueryClient } from '@tanstack/react-query';
@@ -23,9 +22,8 @@ export function NotificationManager() {
             logs.forEach((log) => {
                 const { client, freelancer, amount } = log.args;
                 if (address && (address.toLowerCase() === client.toLowerCase() || address.toLowerCase() === freelancer.toLowerCase())) {
-                    toast.success('New Job Created!', {
-                        icon: '💼',
-                        duration: 5000,
+                    toast.success('New Job Created! 💼', {
+                        autoClose: 5000,
                     });
                 }
                 refreshData();
@@ -40,9 +38,8 @@ export function NotificationManager() {
         eventName: 'JobAccepted',
         onLogs(logs) {
             logs.forEach(() => {
-                toast.success('Job Accepted & Stake Secured!', {
-                    icon: '🛡️',
-                    duration: 5000,
+                toast.success('Job Accepted & Stake Secured! 🛡️', {
+                    autoClose: 5000,
                 });
                 refreshData();
             });
@@ -56,9 +53,8 @@ export function NotificationManager() {
         eventName: 'WorkSubmitted',
         onLogs(logs) {
             logs.forEach((log) => {
-                toast('Work has been submitted!', {
-                    icon: '📑',
-                    duration: 5000,
+                toast.info('Work has been submitted! 📑', {
+                    autoClose: 5000,
                 });
                 refreshData();
             });
@@ -74,14 +70,11 @@ export function NotificationManager() {
             logs.forEach((log) => {
                 const { freelancer } = log.args;
                 if (address && address.toLowerCase() === freelancer.toLowerCase()) {
-                    toast.success('Funds Received & NFT Minted!', {
-                        icon: '💰',
-                        duration: 6000,
+                    toast.success('Funds Received & NFT Minted! 💰', {
+                        autoClose: 6000,
                     });
                 } else {
-                    toast('Funds have been released!', {
-                        icon: '✅',
-                    });
+                    toast.success('Funds have been released! ✅');
                 }
                 refreshData();
             });
@@ -95,9 +88,7 @@ export function NotificationManager() {
         eventName: 'JobDisputed',
         onLogs(logs) {
             logs.forEach(() => {
-                toast.error('A job has been disputed!', {
-                    icon: '⚖️',
-                });
+                toast.error('A job has been disputed! ⚖️');
                 refreshData();
             });
         },

@@ -38,10 +38,23 @@ PolyLance is a high-performance, professional freelance ecosystem built on the P
 ```bash
 git clone https://github.com/akhilmuvva/polygon-freelance-marketplace.git
 cd polygon-freelance-marketplace
-# Install units
+# Install dependencies
 cd frontend && npm install && cd ..
 cd backend && npm install && cd ..
-cd contracts && npm install && cd ..
+cd contracts_new && npm install && cd ..
+
+### 3. Environment Variables
+Create a `.env` file in the `contracts_new` directory:
+```env
+PRIVATE_KEY=your_private_key
+POLYGON_AMOY_RPC_URL=https://rpc-amoy.polygon.technology/
+POLYGONSCAN_API_KEY=your_polygonscan_api_key
+```
+And in the `frontend` directory:
+```env
+VITE_WALLET_CONNECT_PROJECT_ID=your_id
+VITE_CONTRACT_ADDRESS=your_deployed_address
+```
 ```
 
 2. **Run Development Servers**

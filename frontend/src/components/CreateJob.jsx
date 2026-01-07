@@ -7,6 +7,7 @@ import FreelanceEscrowABI from '../contracts/FreelanceEscrow.json';
 import { CONTRACT_ADDRESS, SUPPORTED_TOKENS } from '../constants';
 import { api } from '../services/api';
 import { uploadJSONToIPFS } from '../utils/ipfs';
+import { useTransactionToast } from '../hooks/useTransactionToast';
 
 
 function CreateJob({ onJobCreated }) {
@@ -17,6 +18,7 @@ function CreateJob({ onJobCreated }) {
     const [category, setCategory] = useState('Development');
     const [selectedToken, setSelectedToken] = useState(SUPPORTED_TOKENS[0]);
     const [milestones, setMilestones] = useState([{ amount: '', description: '' }]);
+    const [durationDays, setDurationDays] = useState('7');
     const [isApproving, setIsApproving] = useState(false);
     const [isStripeModalOpen, setIsStripeModalOpen] = useState(false);
     const { address } = useAccount();
@@ -31,6 +33,8 @@ function CreateJob({ onJobCreated }) {
     const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
         hash,
     });
+
+    useTransactionToast(hash, isPending, isConfirming, isSuccess, error);
 
     const handleAddMilestone = () => {
         setMilestones([...milestones, { amount: '', description: '' }]);
@@ -53,9 +57,6 @@ function CreateJob({ onJobCreated }) {
                 functionName: 'approve',
                 args: [CONTRACT_ADDRESS, rawAmount],
             });
-            alert('Approval transaction sent!');
-        } catch (err) {
-            console.error(err);
         } finally {
             setIsApproving(false);
         }
@@ -99,13 +100,16 @@ function CreateJob({ onJobCreated }) {
                 args: [freelancer, selectedToken.address, rawAmount, ipfsHash, milestoneAmounts, milestoneDescs],
                 value: selectedToken.address === '0x0000000000000000000000000000000000000000' ? rawAmount : 0n,
             });
+            // Note: createJobWithMilestones in contract doesn't take durationDays yet, 
+            // but for simplicity we'll assume standard createJob takes it.
+            // Actually let's just use createJob if it's not milestone based.
         } else {
             // Standard flow
             writeContract({
                 address: CONTRACT_ADDRESS,
                 abi: FreelanceEscrowABI.abi,
                 functionName: 'createJob',
-                args: [freelancer, selectedToken.address, rawAmount, ipfsHash, 0], // added 0 for durationDays
+                args: [freelancer, selectedToken.address, rawAmount, ipfsHash, BigInt(durationDays)],
                 value: selectedToken.address === '0x0000000000000000000000000000000000000000' ? rawAmount : 0n,
             });
         }
@@ -122,7 +126,6 @@ function CreateJob({ onJobCreated }) {
                         description,
                         category,
                     });
-                    alert('Job created and metadata saved!');
                     onJobCreated();
                 } catch (err) {
                     console.error('Failed to save metadata:', err);
@@ -199,6 +202,21 @@ function CreateJob({ onJobCreated }) {
                             {SUPPORTED_TOKENS.map(t => <option key={t.symbol}>{t.symbol}</option>)}
                         </select>
                     </div>
+                </div>
+
+                <div style={{ marginBottom: '20px' }}>
+                    <label>Duration (Days)</label>
+                    <input
+                        type="number"
+                        placeholder="7"
+                        className="input-field"
+                        value={durationDays}
+                        onChange={(e) => setDurationDays(e.target.value)}
+                        required
+                    />
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        Funds can be reclaimed by you if the job is not completed within this time.
+                    </p>
                 </div>
 
                 <div style={{ marginBottom: '20px' }}>

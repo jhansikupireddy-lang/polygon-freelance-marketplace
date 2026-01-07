@@ -75,7 +75,7 @@ contract FreelanceEscrow is
 
     struct Milestone {
         uint256 amount;
-        string description;
+        string ipfsHash;
         bool isReleased;
     }
 
@@ -111,7 +111,7 @@ contract FreelanceEscrow is
 
     struct Review {
         uint8 rating; 
-        string comment;
+        string ipfsHash;
         address reviewer;
     }
 
@@ -122,7 +122,7 @@ contract FreelanceEscrow is
     event WorkSubmitted(uint256 indexed jobId, string ipfsHash);
     event FundsReleased(uint256 indexed jobId, address indexed freelancer, uint256 amount, uint256 nftId);
     event MilestoneReleased(uint256 indexed jobId, uint256 indexed milestoneId, uint256 amount);
-    event MilestonesDefined(uint256 indexed jobId, uint256[] amounts, string[] descriptions);
+    event MilestonesDefined(uint256 indexed jobId, uint256[] amounts, string[] ipfsHashes);
     event JobCancelled(uint256 indexed jobId);
     event JobDisputed(uint256 indexed jobId);
     event DisputeRaised(uint256 indexed jobId, address indexed raiser);
@@ -293,7 +293,7 @@ contract FreelanceEscrow is
         uint256 amount,
         string memory _ipfsHash,
         uint256[] memory milestoneAmounts,
-        string[] memory milestoneDescs
+        string[] memory milestoneIpfsHashes
     ) external payable whenNotPaused nonReentrant {
         uint256 totalMilestoneAmount = 0;
         for (uint256 i = 0; i < milestoneAmounts.length; i++) {
@@ -316,11 +316,11 @@ contract FreelanceEscrow is
         for (uint256 i = 0; i < milestoneAmounts.length; i++) {
             jobMilestones[jobId][i] = Milestone({
                 amount: milestoneAmounts[i],
-                description: milestoneDescs[i],
+                ipfsHash: milestoneIpfsHashes[i],
                 isReleased: false
             });
         }
-        emit MilestonesDefined(jobId, milestoneAmounts, milestoneDescs);
+        emit MilestonesDefined(jobId, milestoneAmounts, milestoneIpfsHashes);
     }
 
     /**
@@ -507,7 +507,7 @@ contract FreelanceEscrow is
 
         reviews[jobId] = Review({
             rating: rating,
-            comment: ipfsHash,
+            ipfsHash: ipfsHash,
             reviewer: _msgSender()
         });
 
@@ -517,7 +517,7 @@ contract FreelanceEscrow is
         emit ReviewSubmitted(jobId, _msgSender(), rating, ipfsHash);
     }
 
-    function rule(uint256 _disputeID, uint256 _ruling) external {
+    function rule(uint256 _disputeID, uint256 _ruling) external nonReentrant {
         require(msg.sender == arbitrator, "Only arbitrator");
         uint256 jobId = disputeIdToJobId[_disputeID];
         Job storage job = jobs[jobId];
@@ -549,6 +549,31 @@ contract FreelanceEscrow is
         Job storage job = jobs[jobId];
         try IPolyToken(polyToken).mint(job.freelancer, REWARD_AMOUNT) {} catch {}
         try IPolyToken(polyToken).mint(job.client, REWARD_AMOUNT / 2) {} catch {}
+    }
+
+    /**
+     * @dev Allows the client to reclaim funds if the job deadline is passed 
+     * and no freelancer was assigned or they failed to submit work.
+     */
+    function refundExpiredJob(uint256 jobId) external nonReentrant {
+        Job storage job = jobs[jobId];
+        require(job.client == _msgSender(), "Only client");
+        require(job.deadline > 0 && block.timestamp > job.deadline, "Deadline not passed");
+        require(job.status == JobStatus.Created || job.status == JobStatus.Accepted, "Invalid status for refund");
+        require(!job.paid, "Already paid");
+
+        job.paid = true;
+        job.status = JobStatus.Cancelled;
+
+        uint256 totalRefund = job.amount;
+        _sendFunds(job.client, job.token, totalRefund);
+
+        // Also refund freelancer stake if they accepted but failed to finish
+        if (job.freelancerStake > 0 && job.freelancer != address(0)) {
+            _sendFunds(job.freelancer, job.token, job.freelancerStake);
+        }
+
+        emit JobCancelled(jobId);
     }
 
     mapping(uint256 => uint256) public disputeIdToJobId;
