@@ -100,8 +100,34 @@ async function main() {
         console.log("FreelanceEscrow Proxy deployed to:", addresses.FreelanceEscrow);
         saveProgress();
 
-        // 4. Deploy FreelanceSBT
-        console.log("\n4. Deploying FreelanceSBT...");
+        // 4. Deploy FreelancerReputation (UUPS Proxy)
+        console.log("\n4. Deploying FreelancerReputation...");
+        const FreelancerReputation = await ethers.getContractFactory("FreelancerReputation");
+        const reputation = await upgrades.deployProxy(
+            FreelancerReputation,
+            [deployer.address, "https://api.polylance.com/reputation/{id}.json"],
+            { kind: 'uups' }
+        );
+        await reputation.waitForDeployment();
+        addresses.FreelancerReputation = await reputation.getAddress();
+        console.log("FreelancerReputation Proxy deployed to:", addresses.FreelancerReputation);
+        saveProgress();
+
+        // 5. Deploy StreamingEscrow
+        console.log("\n5. Deploying StreamingEscrow...");
+        const StreamingEscrow = await ethers.getContractFactory("StreamingEscrow");
+        const streaming = await StreamingEscrow.deploy(
+            addresses.FreelancerReputation,
+            deployer.address,
+            deployer.address // Fee collector
+        );
+        await streaming.waitForDeployment();
+        addresses.StreamingEscrow = await streaming.getAddress();
+        console.log("StreamingEscrow deployed to:", addresses.StreamingEscrow);
+        saveProgress();
+
+        // 6. Deploy FreelanceSBT
+        console.log("\n6. Deploying FreelanceSBT...");
         const FreelanceSBT = await ethers.getContractFactory("FreelanceSBT");
         const sbt = await FreelanceSBT.deploy(deployer.address, addresses.FreelanceEscrow);
         await sbt.waitForDeployment();
@@ -109,8 +135,8 @@ async function main() {
         console.log("FreelanceSBT deployed to:", addresses.FreelanceSBT);
         saveProgress();
 
-        // 5. Configure Escrow
-        console.log("\n5. Configuring Escrow...");
+        // 7. Configure Escrow
+        console.log("\n7. Configuring Escrow...");
         const deployedEscrow = await ethers.getContractAt("FreelanceEscrow", addresses.FreelanceEscrow);
 
         // Link PolyToken
@@ -125,8 +151,14 @@ async function main() {
         await deployedEscrow.setTokenWhitelist(addresses.PolyToken, true);
         console.log("Whitelisted PolyToken for payments.");
 
-        // 6. Deploy Governance
-        console.log("\n6. Deploying FreelanceGovernance...");
+        // Give StreamingEscrow MINTER_ROLE on Reputation
+        const deployedRep = await ethers.getContractAt("FreelancerReputation", addresses.FreelancerReputation);
+        const MINTER_ROLE = await deployedRep.MINTER_ROLE();
+        await deployedRep.grantRole(MINTER_ROLE, addresses.StreamingEscrow);
+        console.log("Granted MINTER_ROLE to StreamingEscrow on Reputation.");
+
+        // 8. Deploy Governance
+        console.log("\n8. Deploying FreelanceGovernance...");
         const FreelanceGovernance = await ethers.getContractFactory("FreelanceGovernance");
         const governance = await FreelanceGovernance.deploy(addresses.FreelanceSBT);
         await governance.waitForDeployment();
@@ -142,6 +174,8 @@ async function main() {
     console.log("InsurancePool:       ", addresses.InsurancePool);
     console.log("FreelanceSBT:       ", addresses.FreelanceSBT);
     console.log("FreelanceEscrow Proxy:", addresses.FreelanceEscrow);
+    console.log("FreelancerReputation Proxy:", addresses.FreelancerReputation);
+    console.log("StreamingEscrow:     ", addresses.StreamingEscrow);
     console.log("FreelanceGovernance:  ", addresses.FreelanceGovernance);
     console.log("---------------------------\n");
 
@@ -157,6 +191,7 @@ async function main() {
             let content = fs.readFileSync(frontendConfigPath, 'utf8');
             content = content.replace(/export const CONTRACT_ADDRESS = '.*';/, `export const CONTRACT_ADDRESS = '${addresses.FreelanceEscrow}';`);
             content = content.replace(/export const POLY_TOKEN_ADDRESS = '.*';/, `export const POLY_TOKEN_ADDRESS = '${addresses.PolyToken}';`);
+            content = content.replace(/export const STREAMING_ESCROW_ADDRESS = '.*';/, `export const STREAMING_ESCROW_ADDRESS = '${addresses.StreamingEscrow}';`);
             fs.writeFileSync(frontendConfigPath, content);
             console.log("Updated frontend constants.js with new addresses.");
         }

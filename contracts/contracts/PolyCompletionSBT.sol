@@ -27,11 +27,15 @@ contract PolyCompletionSBT is ERC721, Ownable {
      * @param categoryId Numerical identifier for the work category
      * @param rating Rating assigned to the completed work (0-5)
      * @param completionTimestamp Unix timestamp when the job was marked complete
+     * @param jobId The unique identifier of the job in the marketplace
+     * @param client The address of the employer
      */
     struct CertificateData {
         uint16 categoryId;
         uint8 rating;
         uint48 completionTimestamp;
+        uint256 jobId;
+        address client;
     }
 
     /// @notice Maps token ID to its certificate metadata
@@ -55,7 +59,7 @@ contract PolyCompletionSBT is ERC721, Ownable {
      * @param _marketplace Address of the PolyLance Escrow/Marketplace contract
      */
     constructor(address initialOwner, address _marketplace) 
-        ERC721("PolyLance Completion Certificate", "PLCC") 
+        ERC721("PolyLance Proof of Contribution", "PLPC") 
         Ownable(initialOwner) 
     {
         marketplace = _marketplace;
@@ -71,14 +75,22 @@ contract PolyCompletionSBT is ERC721, Ownable {
     }
 
     /**
-     * @notice Mints a soulbound completion certificate
+     * @notice Mints a soulbound contribution certificate
      * @dev Restricted to the authorized Marketplace contract
      * @param to Recipient address (freelancer)
      * @param categoryId Job category ID
      * @param rating Rating awarded for the job
+     * @param jobId The ID of the job being completed
+     * @param client The address of the client
      * @return uint256 The ID of the newly minted certificate
      */
-    function mintCertificate(address to, uint16 categoryId, uint8 rating) external returns (uint256) {
+    function mintContribution(
+        address to, 
+        uint16 categoryId, 
+        uint8 rating, 
+        uint256 jobId, 
+        address client
+    ) external returns (uint256) {
         if (msg.sender != marketplace) revert NotMarketplace();
         
         uint256 tokenId = ++_nextTokenId;
@@ -87,7 +99,9 @@ contract PolyCompletionSBT is ERC721, Ownable {
         certificateDetails[tokenId] = CertificateData({
             categoryId: categoryId,
             rating: rating,
-            completionTimestamp: uint48(block.timestamp)
+            completionTimestamp: uint48(block.timestamp),
+            jobId: jobId,
+            client: client
         });
 
         emit Locked(tokenId);
@@ -133,11 +147,13 @@ contract PolyCompletionSBT is ERC721, Ownable {
         string memory category = _getCategoryName(data.categoryId);
         
         string memory json = string(abi.encodePacked(
-            '{"name": "Work Certificate #', tokenId.toString(), 
-            '", "description": "Official Proof of Work verified by PolyLance Protocol", ',
+            '{"name": "Proof of Contribution #', tokenId.toString(), 
+            '", "description": "Verified on-chain contribution certificate for job #', data.jobId.toString(), 
+            ' on PolyLance Marketplace", ',
             '"attributes": [',
             '{"trait_type": "Category", "value": "', category, '"},',
             '{"trait_type": "Rating", "value": ', uint256(data.rating).toString(), '},',
+            '{"trait_type": "Client", "value": "', Strings.toHexString(data.client), '"},',
             '{"display_type": "date", "trait_type": "Completion Date", "value": ', uint256(data.completionTimestamp).toString(), '}',
             ']}'
         ));

@@ -16,6 +16,6 @@ contract Invariants is FreelanceEscrow {
 
     // Property: Job ID 0 should never exist or be used
     function echidna_job_id_non_zero() public view returns (bool) {
-        return jobs[0].id == 0;
+        return jobs[0].client == address(0);
     }
 }

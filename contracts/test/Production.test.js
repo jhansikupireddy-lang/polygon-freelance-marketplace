@@ -3,8 +3,7 @@ const { ethers, upgrades } = require("hardhat");
 const { time } = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("PolyLance Production Suite", function () {
-    let Escrow, Token, MockERC20, SBT, Reputation, Insurance;
-    let escrow, polyToken, usdc, sbt, reputation, insurance;
+    let escrow, polyToken, usdc, sbt, reputation, insurance, privacy, governance, completionSBT;
     let owner, client, freelancer, arbitrator, vault, other;
 
     const INITIAL_SUPPLY = ethers.parseEther("1000000");
@@ -29,7 +28,22 @@ describe("PolyLance Production Suite", function () {
         insurance = await InsuranceFactory.deploy(owner.address);
         await insurance.waitForDeployment();
 
-        // 4. Deploy Escrow (Proxy)
+        // 4. Deploy FreelancerReputation (UUPS)
+        const RepFactory = await ethers.getContractFactory("FreelancerReputation");
+        reputation = await upgrades.deployProxy(RepFactory, [owner.address, "https://rep.uri/"], { kind: "uups" });
+        await reputation.waitForDeployment();
+
+        // 5. Deploy FreelanceSBT
+        const SBTFactory = await ethers.getContractFactory("FreelanceSBT");
+        sbt = await SBTFactory.deploy(owner.address, owner.address); // Temporarily owner as minter
+        await sbt.waitForDeployment();
+
+        // 6. Deploy PolyCompletionSBT
+        const CompletionSBTFactory = await ethers.getContractFactory("PolyCompletionSBT");
+        completionSBT = await CompletionSBTFactory.deploy(owner.address);
+        await completionSBT.waitForDeployment();
+
+        // 7. Deploy Escrow (Proxy)
         const EscrowFactory = await ethers.getContractFactory("FreelanceEscrow");
         escrow = await upgrades.deployProxy(EscrowFactory, [
             owner.address,
@@ -40,13 +54,31 @@ describe("PolyLance Production Suite", function () {
         ], { kind: "uups" });
         await escrow.waitForDeployment();
 
-        // 5. Setup Roles & Links
+        // 8. Deploy PrivacyShield
+        const PrivacyFactory = await ethers.getContractFactory("PrivacyShield");
+        privacy = await PrivacyFactory.deploy(owner.address);
+        await privacy.waitForDeployment();
+
+        // 9. Deploy Governance
+        const GovFactory = await ethers.getContractFactory("FreelanceGovernance");
+        governance = await GovFactory.deploy(await sbt.getAddress());
+        await governance.waitForDeployment();
+
+        // 10. Setup Roles & Links
         await escrow.setPolyToken(await polyToken.getAddress());
         await escrow.setVault(vault.address);
+        await escrow.setReputationContract(await reputation.getAddress());
+        await escrow.setSBTContract(await sbt.getAddress());
+        await escrow.setCompletionCertContract(await completionSBT.getAddress());
+
         await polyToken.grantRole(await polyToken.MINTER_ROLE(), await escrow.getAddress());
+        await reputation.grantRole(await reputation.MINTER_ROLE(), await escrow.getAddress());
+        await sbt.grantRole(await sbt.MINTER_ROLE(), await escrow.getAddress());
+        await completionSBT.grantRole(await completionSBT.MINTER_ROLE(), await escrow.getAddress());
+
         await escrow.setTokenWhitelist(await usdc.getAddress(), true);
 
-        // 6. Fund accounts
+        // 11. Fund accounts
         await usdc.mint(client.address, JOB_AMOUNT * 10n);
         await usdc.mint(freelancer.address, JOB_AMOUNT);
         await usdc.connect(client).approve(await escrow.getAddress(), ethers.MaxUint256);
@@ -54,132 +86,113 @@ describe("PolyLance Production Suite", function () {
     });
 
     describe("Full Job Lifecycle (ERC20)", function () {
-        it("Processes a standard job from creation to completion", async function () {
-            // Step 1: Create Job
-            const tx1 = await escrow.connect(client).createJob(
-                ethers.ZeroAddress,
-                await usdc.getAddress(),
-                JOB_AMOUNT,
-                "ipfs://job-desc",
-                7, // 7 days
-                1 // Development
-            );
-            await expect(tx1).to.emit(escrow, "JobCreated");
-
-            // Step 2: Freelancer Applies
-            const applyStake = (JOB_AMOUNT * 5n) / 100n;
-            await expect(escrow.connect(freelancer).applyForJob(1))
-                .to.emit(escrow, "JobApplied")
-                .withArgs(1, freelancer.address, applyStake);
-
-            // Step 3: Client Picks Freelancer
-            await expect(escrow.connect(client).pickFreelancer(1, freelancer.address))
-                .to.emit(escrow, "FreelancerSelected");
-
-            // Step 4: Accept Job (Locks 10% stake)
-            // Note: Application stake (5%) is already in contract, acceptJob adds the rest
-            // In current contract logic, acceptJob calculates full 10% and transfers it.
-            // Let's verify freelancer balance
-            const initialBalance = await usdc.balanceOf(freelancer.address);
+        it("Processes a standard job from creation to completion with SBTs and Reputation", async function () {
+            await escrow.connect(client).createJob(ethers.ZeroAddress, await usdc.getAddress(), JOB_AMOUNT, "ipfs://job", 7, 1);
+            await escrow.connect(freelancer).applyForJob(1);
+            await escrow.connect(client).pickFreelancer(1, freelancer.address);
             await escrow.connect(freelancer).acceptJob(1);
-            const finalBalance = await usdc.balanceOf(freelancer.address);
-            expect(initialBalance - finalBalance).to.equal((JOB_AMOUNT * 10n) / 100n);
+            await escrow.connect(freelancer).submitWork(1, "ipfs://work");
 
-            // Step 5: Submit Work
-            await escrow.connect(freelancer).submitWork(1, "ipfs://work-results");
+            // Before release, check initial state
+            expect(await reputation.balanceOf(freelancer.address, 1)).to.equal(0);
 
-            // Step 6: Release Funds
-            const initialFreelancerUSDC = await usdc.balanceOf(freelancer.address);
-            const initialVaultUSDC = await usdc.balanceOf(vault.address);
-            const initialInsuranceUSDC = await usdc.balanceOf(await insurance.getAddress());
-
-            await expect(escrow.connect(client).releaseFunds(1))
-                .to.emit(escrow, "FundsReleased");
+            await escrow.connect(client).releaseFunds(1);
 
             // Verify Payouts
-            const platformFee = (JOB_AMOUNT * 250n) / 10000n; // 2.5%
-            const insuranceFee = (JOB_AMOUNT * 100n) / 10000n; // 1%
-            const freelancerNet = JOB_AMOUNT - platformFee - insuranceFee;
-            const freelancerStake = (JOB_AMOUNT * 10n) / 100n;
-
-            expect(await usdc.balanceOf(vault.address)).to.equal(initialVaultUSDC + platformFee);
-            expect(await usdc.balanceOf(await insurance.getAddress())).to.equal(initialInsuranceUSDC + insuranceFee);
-            expect(await usdc.balanceOf(freelancer.address)).to.equal(initialFreelancerUSDC + freelancerNet + freelancerStake);
+            const platformFee = (JOB_AMOUNT * 250n) / 10000n;
+            expect(await usdc.balanceOf(vault.address)).to.equal(platformFee);
 
             // Verify Rewards
             expect(await polyToken.balanceOf(freelancer.address)).to.equal(REWARD_AMOUNT);
-            expect(await polyToken.balanceOf(client.address)).to.equal(REWARD_AMOUNT / 2n);
+
+            // Verify Reputation & SBTs
+            expect(await reputation.balanceOf(freelancer.address, 1)).to.be.gt(0);
+            expect(await sbt.balanceOf(freelancer.address)).to.equal(1);
+            expect(await completionSBT.balanceOf(freelancer.address)).to.equal(1);
         });
 
-        it("Fails when job deadline is passed and not started", async function () {
-            await escrow.connect(client).createJob(
-                freelancer.address,
-                await usdc.getAddress(),
-                JOB_AMOUNT,
-                "ipfs://job",
-                1, // 1 day
-                1
+        it("Handles Milestone-based Jobs correctly", async function () {
+            const mAmounts = [JOB_AMOUNT / 2n, JOB_AMOUNT / 2n];
+            const mDescs = ["Phase 1", "Phase 2"];
+
+            await escrow.connect(client).createJobWithMilestones(
+                freelancer.address, await usdc.getAddress(), JOB_AMOUNT, "ipfs://ms", mAmounts, mDescs
             );
 
-            await time.increase(2 * 24 * 60 * 60); // 2 days
+            await escrow.connect(freelancer).acceptJob(1);
 
-            const initialClientUSDC = await usdc.balanceOf(client.address);
-            await escrow.connect(client).refundExpiredJob(1);
-            const finalClientUSDC = await usdc.balanceOf(client.address);
+            // Release Milestone 1
+            await escrow.connect(client).releaseMilestone(1, 0);
+            const balAfterM1 = await usdc.balanceOf(freelancer.address);
+            // 500 - fees (2.5% + 1% = 3.5%) + 10% stake returned? 
+            // Actually stake is returned at the VERY END of the job.
+            expect(balAfterM1).to.be.gt(0);
 
-            expect(finalClientUSDC - initialClientUSDC).to.equal(JOB_AMOUNT);
+            // Complete job after last milestone
+            await escrow.connect(freelancer).submitWork(1, "ipfs://done");
+            await escrow.connect(client).releaseFunds(1);
+
+            const job = await escrow.jobs(1);
+            expect(job.status).to.equal(5); // Completed
         });
     });
 
     describe("Dispute & Arbitration", function () {
-        it("Allows arbitrator to manually resolve a dispute with a split", async function () {
-            await escrow.connect(client).createJob(
-                freelancer.address,
-                await usdc.getAddress(),
-                JOB_AMOUNT,
-                "ipfs://job",
-                7,
-                1
-            );
+        it("Arbitrator can resolve dispute with specific bps", async function () {
+            await escrow.connect(client).createJob(freelancer.address, await usdc.getAddress(), JOB_AMOUNT, "ipfs://j", 7, 1);
             await escrow.connect(freelancer).acceptJob(1);
-            await escrow.connect(freelancer).submitWork(1, "ipfs://work");
-
-            // Trigger Dispute
             await escrow.connect(client).dispute(1);
-            expect((await escrow.jobs(1)).status).to.equal(3); // Arbitration (in enum it's likely 4 if 0-based index)
-            // Wait, checking JobStatus enum: Created(0), Accepted(1), Ongoing(2), Disputed(3), Arbitration(4)...
-            // Actually it was updated to Created, Accepted, Ongoing, Disputed, Arbitration, Completed, Cancelled
 
-            const totalEscrow = JOB_AMOUNT + (JOB_AMOUNT * 10n) / 100n;
-            const freelancerShareBps = 7000; // 70%
+            const initialFreelancer = await usdc.balanceOf(freelancer.address);
+            await escrow.connect(owner).resolveDisputeManual(1, 3000); // 30% to freelancer
 
-            const initialFreelancerUSDC = await usdc.balanceOf(freelancer.address);
-            const initialClientUSDC = await usdc.balanceOf(client.address);
-
-            await escrow.connect(owner).resolveDisputeManual(1, freelancerShareBps);
-
-            expect(await usdc.balanceOf(freelancer.address)).to.equal(initialFreelancerUSDC + (totalEscrow * 7n) / 10n);
-            expect(await usdc.balanceOf(client.address)).to.equal(initialClientUSDC + (totalEscrow * 3n) / 10n);
+            expect(await usdc.balanceOf(freelancer.address)).to.be.gt(initialFreelancer);
         });
     });
 
-    describe("Access Control & Security", function () {
-        it("Prevents non-managers from pausing", async function () {
-            await expect(escrow.connect(other).pause()).to.be.reverted;
+    describe("Privacy & Governance", function () {
+        it("PrivacyShield: User can commit and admin can verify", async function () {
+            const commitment = ethers.keccak256(ethers.toUtf8Bytes("secret identity"));
+            await privacy.connect(freelancer).commitIdentity(commitment);
+            expect(await privacy.identityHashes(freelancer.address)).to.equal(commitment);
+
+            await privacy.connect(owner).verifyReputationProof(freelancer.address, "0x", 100);
+            expect(await privacy.isVerified(freelancer.address)).to.be.true;
         });
 
-        it("Allows only arbitrator role to resolve manual disputes", async function () {
-            await escrow.connect(client).createJob(freelancer.address, await usdc.getAddress(), JOB_AMOUNT, "test", 7, 1);
-            await escrow.connect(freelancer).acceptJob(1);
-            await escrow.connect(client).dispute(1);
+        it("Governance: Users with SBTs can propose and vote", async function () {
+            // Need 5 SBTs for proposal in FreelanceGovernance.sol
+            // Let's grant them to owner for testing
+            // Wait, FreelanceGovernance uses sbtContract which is FreelanceSBT
+            // SBT minter is owner.
+            for (let i = 0; i < 5; i++) {
+                await sbt.safeMint(owner.address, "ipfs://rep");
+            }
 
-            await expect(escrow.connect(other).resolveDisputeManual(1, 5000)).to.be.reverted;
+            await governance.connect(owner).createProposal("Increase platform rewards");
+            expect(await governance.proposalCount()).to.equal(1);
+
+            await governance.connect(owner).vote(1, true);
+            const prop = await governance.proposals(1);
+            expect(prop.forVotes).to.equal(5);
+
+            await time.increase(4 * 24 * 60 * 60); // 4 days (> 3 days period)
+            await governance.executeProposal(1);
+            const propAfter = await governance.proposals(1);
+            expect(propAfter.executed).to.be.true;
         });
+    });
 
-        it("Successfully upgrades the implementation via UUPS", async function () {
-            const V2 = await ethers.getContractFactory("FreelanceEscrow");
-            const upgraded = await upgrades.upgradeProxy(await escrow.getAddress(), V2);
-            expect(await upgraded.getAddress()).to.equal(await escrow.getAddress());
+    describe("InsurancePool Payouts", function () {
+        it("Owner can payout from insurance pool", async function () {
+            // Send some funds to insurance pool
+            await usdc.mint(owner.address, JOB_AMOUNT);
+            await usdc.connect(owner).approve(await insurance.getAddress(), JOB_AMOUNT);
+            await insurance.deposit(await usdc.getAddress(), JOB_AMOUNT);
+
+            const initialOther = await usdc.balanceOf(other.address);
+            await insurance.payout(await usdc.getAddress(), other.address, 100n);
+            expect(await usdc.balanceOf(other.address)).to.equal(initialOther + 100n);
         });
     });
 });

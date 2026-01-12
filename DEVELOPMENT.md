@@ -13,6 +13,7 @@
 10. [Testing Strategy](#testing-strategy)
 11. [Deployment Guide](#deployment-guide)
 12. [Security Considerations](#security-considerations)
+13. [Optimizing for Antigravity Performance](#optimizing-for-antigravity-performance)
 
 ---
 
@@ -626,6 +627,8 @@ VITE_API_BASE_URL=
 VITE_SUBGRAPH_URL=
 VITE_BICONOMY_PAYMASTER_URL=
 VITE_BICONOMY_BUNDLER_URL=
+VITE_ANTIGRAVITY_PAYMASTER_URL=
+VITE_ANTIGRAVITY_BUNDLER_URL=
 ```
 
 ### Backend (.env)
@@ -644,6 +647,41 @@ PRIVATE_KEY=
 POLYGONSCAN_API_KEY=
 ALCHEMY_API_KEY=
 ```
+
+---
+
+## Optimizing for Antigravity Performance
+
+Antigravity features sub-second block times and high throughput. To ensure PolyLance feels "instant," we follow these strategies:
+
+### 1. Real-time Event Handling
+- **WebSockets (Recommended)**: Use `wss://` transports in Wagmi. This allows the UI to react to events (like `JobCreated` or `PaymentReleased`) as soon as they hit the mempool/block, avoiding the 4-8s delay of standard HTTP polling.
+- **Wagmi Hook**:
+  ```javascript
+  useWatchContractEvent({
+    address: CONTRACT_ADDRESS,
+    abi: ABI,
+    eventName: 'JobCreated',
+    onLogs(logs) {
+      // Direct UI update
+    },
+  })
+  ```
+
+### 2. Optimistic UI Updates
+For actions like work submission, we use the `useOptimisticTransaction` hook. 
+- **Signature Phase**: As soon as the user signs, the UI "assumes" success and adds the item to the list with a "Pending" badge.
+- **Confirmation Phase**: Antigravity typically confirms in <1s. Once confirmed, we remove the badge.
+- **Rollback**: If the transaction fails, we remove the optimistic entry and notify the user.
+
+### 3. Subgraph Optimization
+- **Pruning**: Disable pruning to allow historical data access.
+- **Fast-path Indexing**: Ensure the subgraph is hosted on a node with low-latency access to Antigravity's RPC.
+- **Polling**: Use `refetchInterval: 1000` in Apollo/React Query to keep subgraph data fresh.
+
+### 4. Gasless Relay (4337)
+- **Paymasters**: Use sponsored gas for core freelancer actions (Submit Work, Accept Job).
+- **Bundlers**: Configure the bundler with an Antigravity-specific endpoint to minimize UserOp latency.
 
 ---
 

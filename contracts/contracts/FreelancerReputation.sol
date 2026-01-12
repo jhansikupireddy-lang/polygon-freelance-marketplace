@@ -21,6 +21,9 @@ contract FreelancerReputation is Initializable, ERC1155Upgradeable, AccessContro
     /// @notice Role authorized to authorize UUPS upgrades
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
+    /// @notice ID for the general Karma category (used for fee discounts)
+    uint256 public constant KARMA_ID = 0;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();

@@ -1,0 +1,93 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "./FreelanceEscrowLibrary.sol";
+
+interface IArbitrator {
+    function createDispute(uint256 _choices, bytes calldata _extraData) external payable returns (uint256 disputeID);
+    function arbitrationCost(bytes calldata _extraData) external view returns (uint256 cost);
+}
+
+interface IArbitrable {
+    event Dispute(IArbitrator indexed _arbitrator, uint256 indexed _disputeID, uint256 _metaEvidenceID, uint256 _evidenceID);
+    event Evidence(IArbitrator indexed _arbitrator, uint256 indexed _evidenceID, address indexed _party, string _evidence);
+    event Ruling(IArbitrator indexed _arbitrator, uint256 indexed _disputeID, uint256 _ruling);
+    function rule(uint256 _disputeID, uint256 _ruling) external;
+}
+
+abstract contract FreelanceEscrowBase is 
+    Initializable, 
+    ERC721Upgradeable, 
+    AccessControlUpgradeable,
+    ReentrancyGuardUpgradeable, 
+    UUPSUpgradeable
+{
+    enum JobStatus { Created, Accepted, Ongoing, Disputed, Arbitration, Completed, Cancelled }
+
+    struct Milestone {
+        uint256 amount;
+        string ipfsHash;
+    }
+
+    struct Job {
+        address client;          
+        uint32 id;               
+        uint48 deadline;         
+        JobStatus status;        
+        uint8 rating;            
+        address freelancer;      
+        uint16 categoryId;       
+        uint16 milestoneCount;   
+        bool paid;               
+        address token;           
+        uint256 amount;
+        uint256 freelancerStake;
+        uint256 totalPaidOut;
+        string ipfsHash;
+    }
+
+    struct Application {
+        address freelancer;
+        uint256 stake;
+    }
+
+    mapping(uint256 => Job) public jobs;
+    mapping(uint256 => mapping(uint256 => Milestone)) public jobMilestones;
+    mapping(uint256 => Application[]) public jobApplications;
+    mapping(uint256 => mapping(address => bool)) public hasApplied;
+    mapping(address => mapping(address => uint256)) public pendingRefunds; 
+    uint256 public jobCount;
+    uint256 public constant APPLICATION_STAKE_PERCENT = 5; 
+
+    bytes32 public constant ARBITRATOR_ROLE = keccak256("ARBITRATOR_ROLE");
+    bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
+
+    address public arbitrator;
+    address internal _trustedForwarder; 
+    address public entryPoint;
+    address public vault;
+    uint256 public platformFeeBps;
+    mapping(uint256 => uint256) public milestoneBitmask;
+
+    error NotAuthorized();
+    error InvalidStatus();
+    error AlreadyPaid();
+    error MilestoneAlreadyReleased();
+    error InvalidMilestone();
+
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721Upgradeable, AccessControlUpgradeable) returns (bool) {
+        return super.supportsInterface(interfaceId);
+    }
+
+    event JobCreated(uint256 indexed jobId, address indexed client, address indexed freelancer, uint256 amount, uint256 deadline);
+    event FundsReleased(uint256 indexed jobId, address indexed freelancer, uint256 amount, uint256 nftId);
+    event MilestoneReleased(uint256 indexed jobId, uint256 indexed milestoneId, uint256 amount);
+    event DisputeRaised(uint256 indexed jobId, uint256 disputeId);
+}

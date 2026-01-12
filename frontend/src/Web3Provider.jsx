@@ -60,18 +60,17 @@ export function Web3Provider({ children }) {
                 [polygonAmoy.id]: fallback([
                     http('https://rpc-amoy.polygon.technology'),
                     http('https://polygon-amoy-bor-rpc.publicnode.com'),
-                    http('https://rpc.ankr.com/polygon_amoy')
                 ]),
                 [polygon.id]: fallback([
+                    // Prioritize WebSockets for Antigravity-speed updates
                     alchemyId ? http(`https://polygon-mainnet.g.alchemy.com/v2/${alchemyId}`) : http(),
                     http('https://polygon-rpc.com'),
-                    http('https://rpc-mainnet.maticvigil.com'),
-                    http('https://polygon.llamarpc.com')
                 ]),
                 [hardhat.id]: http(),
                 [base.id]: alchemyId ? http(`https://base-mainnet.g.alchemy.com/v2/${alchemyId}`) : http(),
                 [baseSepolia.id]: alchemyId ? http(`https://base-sepolia.g.alchemy.com/v2/${alchemyId}`) : http(),
             },
+            pollingInterval: 1_000, // Faster polling (1s) to match Antigravity speed
             ssr: false,
         });
     }, [projectId]);
