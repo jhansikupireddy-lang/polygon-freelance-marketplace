@@ -77,6 +77,26 @@ function CreateJob({ onJobCreated, gasless }) {
             });
         } catch (err) { console.error('IPFS failed:', err); }
 
+        if (gasless && smartAccount) {
+            try {
+                const params = {
+                    freelancer,
+                    token: selectedToken.address,
+                    amount: rawAmount,
+                    ipfsHash,
+                    durationDays: Number(durationDays),
+                    categoryId: 1 // Default category ID for now
+                };
+                const txHash = await createJobGasless(smartAccount, CONTRACT_ADDRESS, FreelanceEscrowABI.abi, params);
+                // Trigger the same success logic as Wagmi
+                api.saveJobMetadata({ jobId: Number(jobCount) + 1, title, description, category })
+                    .then(() => onJobCreated()).catch(err => { console.error(err); onJobCreated(); });
+                return;
+            } catch (err) {
+                console.error('[BICONOMY] Gasless failed, falling back:', err);
+            }
+        }
+
         if (milestones.length > 1 || (milestones[0].amount && milestones[0].description)) {
             const milestoneAmounts = milestones.map(m => parseUnits(m.amount, selectedToken.decimals));
             const milestoneDescs = milestones.map(m => m.description);

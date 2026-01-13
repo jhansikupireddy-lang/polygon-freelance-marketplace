@@ -26,7 +26,7 @@ function ConnectionLogger({ children }) {
     return children;
 }
 
-const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://20.30.75.78:3001/api';
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 const queryClient = new QueryClient({
     defaultOptions: {
         queries: {
@@ -78,8 +78,9 @@ export function Web3Provider({ children }) {
     const authAdapter = useMemo(() => createAuthenticationAdapter({
         getNonce: async () => {
             try {
-                console.log('[AUTH] Requesting nonce...');
-                const response = await fetch(`${API_URL}/auth/nonce/default`);
+                const address = window.ethereum?.selectedAddress || 'default';
+                console.log('[AUTH] Requesting nonce for:', address);
+                const response = await fetch(`${API_URL}/auth/nonce/${address}`);
                 if (!response.ok) throw new Error('Failed to fetch nonce');
                 const { nonce } = await response.json();
                 console.log('[AUTH] Nonce received:', nonce);

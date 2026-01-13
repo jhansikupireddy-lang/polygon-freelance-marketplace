@@ -156,6 +156,7 @@ function JobsList({ onUserClick, onSelectChat, gasless }) {
 
 function JobCard({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, onUserClick, onSelectChat, gasless }) {
     const { address } = useAccount();
+    const signer = useEthersSigner();
     const [metadata, setMetadata] = React.useState(null);
     const [matchScore, setMatchScore] = React.useState(null);
     const [isApproving, setIsApproving] = React.useState(false);
@@ -255,6 +256,19 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, 
                 timestamp: Date.now()
             });
         } catch (err) { console.error(err); }
+
+        if (gasless && signer) {
+            try {
+                const smartAccount = await createBiconomySmartAccount(signer);
+                if (smartAccount) {
+                    await submitWorkGasless(smartAccount, CONTRACT_ADDRESS, FreelanceEscrowABI.abi, Number(jobId), ipfsHash);
+                    refetch();
+                    return;
+                }
+            } catch (err) {
+                console.error('[BICONOMY] Gasless submission failed:', err);
+            }
+        }
 
         writeContract({
             address: CONTRACT_ADDRESS,

@@ -23,13 +23,8 @@ export async function createBiconomySmartAccount(signer) {
     }
 
     try {
-        const walletClient = createWalletClient({
-            chain: polygonAmoy,
-            transport: custom(window.ethereum)
-        });
-
         const smartAccount = await createSmartAccountClient({
-            signer: walletClient,
+            signer: signer,
             bundlerUrl: BUNDLER_URL,
             biconomyPaymasterApiKey: PAYMASTER_URL,
         });

@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import Stripe from 'stripe';
 import { Profile } from './models/Profile.js';
 import { JobMetadata } from './models/JobMetadata.js';
+import { SiweMessage } from 'siwe';
 
 dotenv.config();
 
@@ -54,38 +55,42 @@ app.get('/api/auth/nonce/:address', async (req, res) => {
 
 app.post('/api/auth/verify', async (req, res) => {
     const { message, signature } = req.body;
-    console.log('[AUTH] Verify called with:', { message, signature });
+    console.log('[AUTH] Verify called');
     try {
-        // Find nonce from profile (search message for it)
-        // A real implementation would parse the SIWE message properly
-        const nonceMatch = message.match(/Nonce: ([a-zA-Z0-9]+)/);
-        const nonce = nonceMatch ? nonceMatch[1] : null;
+        const siweMessage = new SiweMessage(message);
+        const { data: fields, error } = await siweMessage.verify({ signature });
 
-        const addressMatch = message.match(/^0x[a-fA-F0-9]{40}/) || message.match(/ [a-fA-F0-9]{40}/);
-        // Better way: use siwe library if available, but for now we have viem verifyMessage
-
-        // Let's find the profile by nonce if possible
-        const profile = await Profile.findOne({ nonce });
-        if (!profile) {
-            console.warn('[AUTH] No profile found for nonce:', nonce);
-            return res.status(400).json({ error: 'Invalid or expired nonce' });
+        if (error) {
+            console.warn('[AUTH] SIWE verification error:', error);
+            return res.status(401).json({ error: 'Signature verification failed' });
         }
 
-        const isValid = await verifyMessage({
-            address: profile.address,
-            message: message,
-            signature: signature,
+        // Validate nonce against database
+        const profile = await Profile.findOne({
+            $or: [
+                { address: fields.address.toLowerCase(), nonce: fields.nonce },
+                { address: '0x0000000000000000000000000000000000000000', nonce: fields.nonce }
+            ]
         });
 
-        if (!isValid) {
-            return res.status(401).json({ error: 'Invalid signature' });
+        if (!profile) {
+            console.warn('[AUTH] Nonce mismatch or expired:', fields.nonce);
+            return res.status(400).json({ error: 'Invalid or expired nonce' });
         }
 
         // Clear nonce and return success
         profile.nonce = null;
         await profile.save();
 
-        res.json({ ok: true, address: profile.address });
+        // Ensure user profile exists
+        await Profile.findOneAndUpdate(
+            { address: fields.address.toLowerCase() },
+            {}, // Just ensure it exists
+            { upsert: true }
+        );
+
+        console.log('[AUTH] Login successful for:', fields.address);
+        res.json({ ok: true, address: fields.address });
     } catch (error) {
         console.error('[AUTH] Verify error:', error);
         res.status(500).json({ error: error.message });

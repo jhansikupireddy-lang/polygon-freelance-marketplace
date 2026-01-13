@@ -47,15 +47,39 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col relative overflow-hidden">
+      {/* Decorative Background Elements */}
+      <motion.div
+        animate={{
+          x: [0, 100, 0],
+          y: [0, 50, 0],
+          scale: [1, 1.2, 1]
+        }}
+        transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+        className="bg-glow"
+        style={{ top: '-10%', left: '-10%' }}
+      />
+      <motion.div
+        animate={{
+          x: [0, -80, 0],
+          y: [0, 120, 0],
+          scale: [1, 1.1, 1]
+        }}
+        transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+        className="bg-glow"
+        style={{ bottom: '-10%', right: '-10%', background: 'radial-gradient(circle, rgba(236, 72, 153, 0.2) 0%, transparent 70%)' }}
+      />
+
       <ToastContainer position="top-right" autoClose={5000} theme="dark" hideProgressBar={false} />
       <NotificationManager />
       <ConnectionBanner />
 
-      <nav>
-        <div className="brand">
-          <Briefcase size={28} color="var(--primary)" />
-          <span>PolyLance</span>
+      <nav className="glass-nav">
+        <div className="brand" onClick={() => setActiveTab('dashboard')} style={{ cursor: 'pointer' }}>
+          <div className="w-10 h-10 bg-primary/20 rounded-xl flex items-center justify-center border border-primary/30">
+            <Briefcase size={22} className="text-primary active-icon" />
+          </div>
+          <span className="gradient-text font-bold text-2xl tracking-tighter">PolyLance</span>
         </div>
 
         <div className="flex items-center gap-6">
@@ -98,16 +122,16 @@ function App() {
             </button>
           </div>
 
-          <div className="h-8 w-px bg-white/10 mx-2" />
+          <div className="h-8 w-px bg-white/5 mx-2" />
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
             <div className="flex flex-col items-center">
-              <span className="text-[10px] font-bold uppercase opacity-40 mb-1">Gasless</span>
+              <span className="text-[10px] font-black uppercase opacity-30 mb-1.5 tracking-widest">Relay</span>
               <button
                 onClick={() => setIsGasless(!isGasless)}
-                className={`relative w-9 h-5 rounded-full transition-all duration-300 ${isGasless ? 'bg-primary' : 'bg-white/10 border border-white/10'}`}
+                className={`relative w-10 h-5.5 rounded-full transition-all duration-500 ${isGasless ? 'bg-primary shadow-lg shadow-primary/30' : 'bg-slate-800'}`}
               >
-                <div className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white transition-all duration-300 ${isGasless ? 'left-4.5' : 'left-0.5'}`} />
+                <div className={`absolute top-1 w-3.5 h-3.5 rounded-full bg-white transition-all duration-500 shadow-md ${isGasless ? 'left-5.5' : 'left-1'}`} />
               </button>
             </div>
 
@@ -129,7 +153,7 @@ function App() {
                     {(() => {
                       if (!connected) {
                         return (
-                          <button onClick={openConnectModal} className="btn-primary">
+                          <button onClick={openConnectModal} className="btn-primary shadow-2xl">
                             Connect Wallet
                           </button>
                         );
@@ -137,25 +161,25 @@ function App() {
 
                       if (chain.unsupported) {
                         return (
-                          <button onClick={openChainModal} className="btn-ghost !text-danger !border-danger/30">
+                          <button onClick={openChainModal} className="btn-ghost !text-danger !border-danger/20">
                             Wrong Network
                           </button>
                         );
                       }
 
                       return (
-                        <div className="flex items-center gap-3">
-                          <div className="flex flex-col items-end">
-                            <span className="text-sm font-bold text-primary">{account.displayBalance}</span>
-                            <span className="text-xs opacity-50 font-medium">{account.displayName}</span>
-                          </div>
-                          <button onClick={openAccountModal} className="p-1 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 transition-all">
+                        <div className="flex items-center gap-4 bg-white/5 p-1.5 pr-4 rounded-2xl border border-white/5 hover:border-white/10 transition-all cursor-pointer" onClick={openAccountModal}>
+                          <div className="w-9 h-9 rounded-xl overflow-hidden border border-white/10">
                             <img
                               src={`https://api.dicebear.com/7.x/identicon/svg?seed=${account.address}`}
                               alt="avatar"
-                              className="w-8 h-8 rounded-lg"
+                              className="w-full h-full object-cover"
                             />
-                          </button>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-black text-white/90 leading-none mb-1">{account.displayName}</span>
+                            <span className="text-[10px] font-bold text-primary/80 leading-none">{account.displayBalance}</span>
+                          </div>
                         </div>
                       );
                     })()}
@@ -167,14 +191,14 @@ function App() {
         </div>
       </nav>
 
-      <main className="container flex-grow">
+      <main className="container flex-grow relative z-10">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab + (portfolioAddress || '')}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+            initial={{ opacity: 0, y: 20, filter: 'blur(10px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, y: -20, filter: 'blur(10px)' }}
+            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
           >
             {renderContent()}
           </motion.div>

@@ -51,8 +51,9 @@ function Portfolio({ address, onBack }) {
                 {/* Profile Sidebar */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
                     <div className="glass-card" style={{ textAlign: 'center', padding: '40px 20px' }}>
-                        <div style={{ width: '100%', height: '200px', margin: '0 auto 10px' }}>
-                            <Reputation3D level={Math.floor((profile.reputationScore || 0) / 100) + 1} />
+                        <div style={{ width: '100%', height: '200px', margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(138, 43, 226, 0.1)', borderRadius: '20px' }}>
+                            {/* <Reputation3D level={Math.floor((profile.reputationScore || 0) / 100) + 1} /> */}
+                            <User size={80} color="var(--primary)" style={{ opacity: 0.5 }} />
                         </div>
                         <h2 style={{ fontSize: '1.8rem', marginBottom: '8px' }}>{profile.name || 'Anonymous Creator'}</h2>
 

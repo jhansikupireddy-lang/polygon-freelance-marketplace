@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAccount, useReadContract, useSignMessage } from 'wagmi';
+import { useConnectModal } from '@rainbow-me/rainbowkit';
 import { Wallet, Briefcase, CheckCircle, Clock, Save, User, Award, PlusCircle } from 'lucide-react';
 import FreelanceEscrowABI from '../contracts/FreelanceEscrow.json';
 import { CONTRACT_ADDRESS } from '../constants';
@@ -8,6 +9,7 @@ import LiveJobFeed from './LiveJobFeed';
 
 function Dashboard() {
     const { address, isConnected } = useAccount();
+    const { openConnectModal } = useConnectModal();
 
     useEffect(() => {
         console.log('[DASHBOARD] Account State:', { address, isConnected });
@@ -63,7 +65,10 @@ function Dashboard() {
                     <p className="text-text-muted text-lg mb-8 leading-relaxed">
                         PolyLance is for the bold. Connect your wallet to manage your decentralized career, track earnings, and explore global opportunities.
                     </p>
-                    <button className="btn-primary">
+                    <button
+                        onClick={openConnectModal}
+                        className="btn-primary"
+                    >
                         Get Started Now
                     </button>
                 </div>
@@ -73,77 +78,93 @@ function Dashboard() {
 
     return (
         <div className="animate-fade">
-            <header className="mb-12">
-                <div className="flex items-center gap-4 mb-3">
-                    <span className="badge badge-info">{profile.skills ? 'Certified Talent' : 'Employer'}</span>
+            <header className="mb-16">
+                <div className="flex items-center gap-4 mb-6">
+                    <span className="badge badge-info shadow-lg shadow-primary/10">
+                        {profile.skills ? 'Certified Talent' : 'Employer'}
+                    </span>
                     {profile.reputationScore > 500 && (
-                        <span className="badge badge-warning">✨ Elite Freelancer</span>
+                        <span className="badge badge-warning shadow-lg shadow-warning/10">
+                            ✨ Elite Freelancer
+                        </span>
                     )}
                 </div>
-                <h1 className="text-5xl font-extrabold mb-4 leading-tight">
+                <h1 className="text-6xl font-black mb-6 leading-[1.1] tracking-tight">
                     Welcome back, <span className="gradient-text">{profile.name || 'Pioneer'}</span>
                 </h1>
-                <p className="text-text-muted text-xl max-w-2xl leading-relaxed">
+                <p className="text-text-muted text-xl max-w-2xl leading-relaxed font-medium">
                     The decentralized workforce is at your fingertips. Monitor your contracts, analyze your growth, and stay ahead of the curve.
                 </p>
             </header>
 
-            <div className="grid grid-marketplace mb-12">
-                <div className="glass-card border-l-4 border-primary">
-                    <div className="flex justify-between items-start mb-4">
-                        <span className="text-xs font-bold text-text-dim uppercase tracking-widest">Active Contracts</span>
-                        <Briefcase size={20} className="text-primary" />
+            <div className="grid grid-marketplace mb-16">
+                <div className="glass-card group border-t-2 border-primary">
+                    <div className="flex justify-between items-start mb-6">
+                        <span className="text-[10px] font-black text-text-dim uppercase tracking-[0.2em]">Active Contracts</span>
+                        <div className="p-2 rounded-lg bg-primary/10 text-primary group-hover:scale-110 transition-transform">
+                            <Briefcase size={20} />
+                        </div>
                     </div>
-                    <div className="text-4xl font-bold mb-2">{jobCount?.toString() || '0'}</div>
-                    <div className="text-sm font-medium text-accent">Total Job History</div>
+                    <div className="text-5xl font-black mb-2 tracking-tighter">
+                        {jobCount?.toString() || '0'}
+                    </div>
+                    <div className="text-xs font-bold text-primary/60 uppercase tracking-widest">Total Job History</div>
                 </div>
 
-                <div className="glass-card border-l-4 border-warning" style={{ '--tw-border-opacity': 1, borderColor: '#f59e0b' }}>
-                    <div className="flex justify-between items-start mb-4">
-                        <span className="text-xs font-bold text-text-dim uppercase tracking-widest">Reputation Rank</span>
-                        <Award size={20} style={{ color: '#f59e0b' }} />
+                <div className="glass-card group border-t-2 border-warning">
+                    <div className="flex justify-between items-start mb-6">
+                        <span className="text-[10px] font-black text-text-dim uppercase tracking-[0.2em]">Reputation Rank</span>
+                        <div className="p-2 rounded-lg bg-warning/10 text-warning group-hover:scale-110 transition-transform">
+                            <Award size={20} />
+                        </div>
                     </div>
-                    <div className="text-4xl font-bold mb-2">{profile.reputationScore || 0}</div>
-                    <div className="text-sm font-medium text-text-muted">Top {profile.reputationScore > 500 ? '1%' : '10%'} World Rank</div>
+                    <div className="text-5xl font-black mb-2 tracking-tighter">
+                        {profile.reputationScore || 0}
+                    </div>
+                    <div className="text-xs font-bold text-warning/60 uppercase tracking-widest">
+                        Top {profile.reputationScore > 500 ? '1%' : '10%'} World Rank
+                    </div>
                 </div>
 
-                <div className="glass-card border-l-4 border-accent">
-                    <div className="flex justify-between items-start mb-4">
-                        <span className="text-xs font-bold text-text-dim uppercase tracking-widest">Aggregate Earnings</span>
-                        <CheckCircle size={20} className="text-accent" />
+                <div className="glass-card group border-t-2 border-accent">
+                    <div className="flex justify-between items-start mb-6">
+                        <span className="text-[10px] font-black text-text-dim uppercase tracking-[0.2em]">Aggregate Earnings</span>
+                        <div className="p-2 rounded-lg bg-accent/10 text-accent group-hover:scale-110 transition-transform">
+                            <CheckCircle size={20} />
+                        </div>
                     </div>
-                    <div className="text-4xl font-bold mb-2">
+                    <div className="text-5xl font-black mb-2 tracking-tighter">
                         {profile.totalEarned?.toFixed(2) || '0.00'}
-                        <span className="text-base font-medium text-text-dim ml-2">MATIC</span>
+                        <span className="text-sm font-bold text-text-dim ml-3 tracking-normal">MATIC</span>
                     </div>
-                    <div className="text-sm font-medium text-accent">Secured via Smart Escrow</div>
+                    <div className="text-xs font-bold text-accent/60 uppercase tracking-widest">Secured via Smart Escrow</div>
                 </div>
             </div>
 
-            <div className="glass-panel mb-12 flex flex-wrap gap-8 items-center justify-between">
-                <div className="flex gap-12">
+            <div className="glass-panel mb-16 flex flex-wrap gap-10 items-center justify-between border-white/5">
+                <div className="flex gap-16">
                     <div>
-                        <p className="text-[10px] font-bold text-text-dim uppercase mb-1">Global Volume</p>
-                        <p className="text-lg font-bold">{(analytics.totalVolume || 0).toFixed(2)} MATIC</p>
+                        <p className="text-[10px] font-black text-text-dim uppercase tracking-[0.15em] mb-2">Global Volume</p>
+                        <p className="text-xl font-black tracking-tight">{(analytics.totalVolume || 0).toFixed(2)} <span className="text-xs text-text-dim">MATIC</span></p>
                     </div>
-                    <div className="w-px h-10 bg-white/5" />
+                    <div className="w-px h-12 bg-white/5" />
                     <div>
-                        <p className="text-[10px] font-bold text-text-dim uppercase mb-1">Ecosystem Jobs</p>
-                        <p className="text-lg font-bold">{analytics.totalJobs || 0}</p>
+                        <p className="text-[10px] font-black text-text-dim uppercase tracking-[0.15em] mb-2">Ecosystem Jobs</p>
+                        <p className="text-xl font-black tracking-tight">{analytics.totalJobs || 0}</p>
                     </div>
-                    <div className="w-px h-10 bg-white/5" />
+                    <div className="w-px h-12 bg-white/5" />
                     <div>
-                        <p className="text-[10px] font-bold text-text-dim uppercase mb-1">Platform Users</p>
-                        <p className="text-lg font-bold">{analytics.totalUsers || 0}</p>
+                        <p className="text-[10px] font-black text-text-dim uppercase tracking-[0.15em] mb-2">Platform Users</p>
+                        <p className="text-xl font-black tracking-tight">{analytics.totalUsers || 0}</p>
                     </div>
                 </div>
 
                 <div className="flex gap-4">
-                    <button onClick={() => setPortfolioAddress(address)} className="btn-ghost !py-2 !px-4 flex items-center gap-2">
-                        <User size={16} /> My Portfolio
+                    <button onClick={() => setPortfolioAddress(address)} className="btn-ghost !py-3 !px-6 flex items-center gap-3">
+                        <User size={18} /> My Portfolio
                     </button>
-                    <button className="btn-primary !py-2 !px-4">
-                        <PlusCircle size={16} /> New Job
+                    <button className="btn-primary !py-3 !px-6">
+                        <PlusCircle size={18} /> New Job
                     </button>
                 </div>
             </div>

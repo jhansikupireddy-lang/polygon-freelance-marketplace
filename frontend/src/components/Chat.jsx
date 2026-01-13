@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useEthersSigner } from '../hooks/useEthersSigner';
 import { useAccount } from 'wagmi';
 import { MessageSquare, Send, User, Loader2, FileText, DollarSign, Clock, CheckCircle2 } from 'lucide-react';
+import { hexToBytes } from 'viem';
 
 export default function Chat({ initialPeerAddress, onClearedAddress }) {
     const { address } = useAccount();
@@ -35,7 +36,7 @@ export default function Chat({ initialPeerAddress, onClearedAddress }) {
     const fetchContractContext = async (peerAddr, myAddr) => {
         setLoadingContext(true);
         try {
-            const SUBGRAPH_URL = import.meta.env.VITE_SUBGRAPH_URL || 'http://20.30.75.78:8000/subgraphs/name/polylance';
+            const SUBGRAPH_URL = import.meta.env.VITE_SUBGRAPH_URL || 'http://localhost:8000/subgraphs/name/polylance';
 
             const query = `
                 query GetJobContext($client: String!, $freelancer: String!) {
@@ -93,18 +94,33 @@ export default function Chat({ initialPeerAddress, onClearedAddress }) {
         setIsInitializing(true);
         setError(null);
         try {
-            console.log('[XMTP] Initializing client...');
-            // In V3, we use Client.create. By default it uses MLS.
-            const xmtp = await Client.create(signer, { env: 'production' });
-            console.log('[XMTP] Client initialized:', xmtp.address);
+            console.log('[XMTP] Initializing client for address:', address);
+
+            // In V3 browser-sdk, the client.create takes (signer, options) or (address, signer, options)
+            // Depending on the version. For 5.3.0, it's (signer, options)
+            // But sometimes wrapping the signer is safer to ensure all methods exist.
+            const xmtp = await Client.create(signer, {
+                env: 'production', // Use 'production' even for testnets as per XMTP's modern approach
+                dbPath: `xmtp-${address.toLowerCase()}`
+            });
+
+            console.log('[XMTP] Client initialized successfully:', xmtp.address);
             setClient(xmtp);
 
             // Initial fetch of conversations
             const convs = await xmtp.conversations.list();
+            console.log('[XMTP] Found conversations:', convs.length);
             setConversations(convs);
         } catch (err) {
             console.error('[XMTP] Initialization error:', err);
-            setError(err);
+            // Check for specific common errors
+            if (err.message?.includes('secure context')) {
+                setError(new Error('XMTP requires a secure context (HTTPS) or localhost.'));
+            } else if (err.message?.includes('user rejected')) {
+                setError(new Error('Signature request was rejected. Please try again.'));
+            } else {
+                setError(err);
+            }
         } finally {
             setIsInitializing(false);
         }
@@ -167,12 +183,17 @@ export default function Chat({ initialPeerAddress, onClearedAddress }) {
                         if (peerAddress && client) {
                             try {
                                 // In V3, creating a peer-to-peer conversation
+                                // We check if they can receive messages first if possible
                                 const conversation = await client.conversations.newConversation(peerAddress);
                                 setSelectedConversation(conversation);
                                 setPeerAddress('');
                             } catch (err) {
                                 console.error('[XMTP] Error starting conversation:', err);
-                                alert('Error starting conversation: ' + err.message);
+                                if (err.message?.includes('not registered') || err.message?.includes('not found')) {
+                                    alert('This user has not enabled XMTP messaging yet. They need to connect their wallet and enable messaging for you to talk to them.');
+                                } else {
+                                    alert('Error starting conversation: ' + err.message);
+                                }
                             }
                         }
                     }}
