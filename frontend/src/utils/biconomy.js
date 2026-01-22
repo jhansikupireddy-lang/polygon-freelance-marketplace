@@ -93,10 +93,24 @@ export async function createJobGasless(smartAccount, contractAddress, contractAB
     const { freelancer, token, amount, ipfsHash, durationDays, categoryId } = params;
 
     try {
+        const currentTimestamp = Math.floor(Date.now() / 1000);
+        const deadline = durationDays > 0 ? currentTimestamp + (durationDays * 86400) : 0;
+
+        const paramsStruct = {
+            categoryId: categoryId,
+            freelancer: freelancer,
+            token: token,
+            amount: amount,
+            ipfsHash: ipfsHash,
+            deadline: deadline,
+            mAmounts: [],
+            mHashes: []
+        };
+
         const data = encodeFunctionData({
             abi: contractABI,
             functionName: 'createJob',
-            args: [freelancer, token, amount, ipfsHash, durationDays, categoryId]
+            args: [paramsStruct]
         });
 
         const tx = {

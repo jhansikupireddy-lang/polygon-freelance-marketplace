@@ -10,9 +10,26 @@ import LiveJobFeed from './LiveJobFeed';
 function Dashboard() {
     const { address, isConnected } = useAccount();
     const { openConnectModal } = useConnectModal();
+    const { signMessageAsync } = useSignMessage();
 
     const [isLoadingProfile, setIsLoadingProfile] = React.useState(true);
     const [isLoadingAnalytics, setIsLoadingAnalytics] = React.useState(true);
+    const [isSaving, setIsSaving] = React.useState(false);
+    const [portfolioAddress, setPortfolioAddress] = React.useState(null);
+    const [profile, setProfile] = React.useState({
+        name: '',
+        bio: '',
+        skills: '',
+        category: 'Development',
+        reputationScore: 0,
+        totalEarned: 0
+    });
+    const [analytics, setAnalytics] = React.useState({
+        totalJobs: 0,
+        totalVolume: 0,
+        avgReputation: 0,
+        totalUsers: 0
+    });
 
     const { data: jobCount, isLoading: isLoadingJobCount } = useReadContract({
         address: CONTRACT_ADDRESS,
@@ -95,7 +112,7 @@ function Dashboard() {
                         </>
                     )}
                 </div>
-                <h1 className="text-6xl font-black mb-6 leading-[1.1] tracking-tight">
+                <h1 className="text-4xl md:text-6xl font-black mb-6 leading-[1.1] tracking-tight">
                     Welcome back, <span className="gradient-text">{isLoadingProfile ? '...' : (profile.name || 'Pioneer')}</span>
                 </h1>
                 <p className="text-text-muted text-xl max-w-2xl leading-relaxed font-medium opacity-80">
@@ -201,7 +218,7 @@ function Dashboard() {
 
                     <form onSubmit={handleSaveProfile} className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="input-group">
+                            <div className="input-group-glass">
                                 <label className="input-label">Public Alias</label>
                                 <input
                                     type="text"
@@ -211,7 +228,7 @@ function Dashboard() {
                                     placeholder="Enter your professional name"
                                 />
                             </div>
-                            <div className="input-group">
+                            <div className="input-group-glass">
                                 <label className="input-label">Core Specialization</label>
                                 <select
                                     className="input-field"
@@ -227,7 +244,7 @@ function Dashboard() {
                             </div>
                         </div>
 
-                        <div className="input-group">
+                        <div className="input-group-glass">
                             <label className="input-label">Professional Bio</label>
                             <textarea
                                 className="input-field min-h-[140px]"
@@ -237,7 +254,7 @@ function Dashboard() {
                             />
                         </div>
 
-                        <div className="input-group">
+                        <div className="input-group-glass">
                             <label className="input-label">Skillset Matrix (Comma Separated)</label>
                             <input
                                 type="text"

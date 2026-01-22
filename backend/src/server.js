@@ -9,8 +9,15 @@ import Stripe from 'stripe';
 import { Profile } from './models/Profile.js';
 import { JobMetadata } from './models/JobMetadata.js';
 import { SiweMessage } from 'siwe';
+import https from 'https';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export const app = express();
 const PORT = process.env.PORT || 3001;
@@ -18,11 +25,10 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/polyla
 
 app.use(cors({
     origin: [
-        process.env.FRONTEND_URL || 'http://localhost:5173',
-        'http://localhost:5174',
-        'http://localhost:3000',
-        'http://20.30.75.78:5173',
-        'http://20.30.75.78:5174'
+        process.env.FRONTEND_URL || 'https://localhost:5173',
+        'https://localhost:5174',
+        'http://localhost:5173', // Keep http for fallback
+        'http://localhost:5174'
     ],
     credentials: true,
 }));
@@ -301,8 +307,34 @@ app.post('/api/stripe/create-onramp-session', async (req, res) => {
     }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`CORS allowed from: ${process.env.FRONTEND_URL || 'http://localhost:5173'}`);
-    startSyncer().catch(console.error);
-});
+// Start HTTPS Server
+// Try to load certs, fallback to HTTP if missing (for prod/CI)
+const certPath = path.join(process.cwd(), 'certs');
+let httpsOptions = null;
+
+try {
+    if (fs.existsSync(path.join(certPath, 'server.key')) && fs.existsSync(path.join(certPath, 'server.cert'))) {
+        httpsOptions = {
+            key: fs.readFileSync(path.join(certPath, 'server.key')),
+            cert: fs.readFileSync(path.join(certPath, 'server.cert'))
+        };
+        console.log('Loaded SSL certificates.');
+    } else {
+        console.warn('SSL certificates not found in backend/certs. Running in HTTP mode.');
+    }
+} catch (e) {
+    console.warn('Error loading SSL certs:', e.message);
+}
+
+if (httpsOptions) {
+    https.createServer(httpsOptions, app).listen(PORT, '0.0.0.0', () => {
+        console.log(`HTTPS Server running on port ${PORT}`);
+        console.log(`CORS allowed from: ${process.env.FRONTEND_URL || 'https://localhost:5173'}`);
+        startSyncer().catch(console.error);
+    });
+} else {
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`HTTP Server running on port ${PORT}`);
+        startSyncer().catch(console.error);
+    });
+}

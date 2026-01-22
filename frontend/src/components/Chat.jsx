@@ -99,7 +99,7 @@ export default function Chat({ initialPeerAddress, onClearedAddress }) {
             // In V3 browser-sdk, the client.create takes (signer, options) or (address, signer, options)
             // Depending on the version. For 5.3.0, it's (signer, options)
             // But sometimes wrapping the signer is safer to ensure all methods exist.
-            const xmtp = await Client.create(signer, {
+            const xmtp = await Client.create(address, signer, {
                 env: 'production', // Use 'production' even for testnets as per XMTP's modern approach
                 dbPath: `xmtp-${address.toLowerCase()}`
             });
