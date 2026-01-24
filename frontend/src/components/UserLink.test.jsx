@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
-import UserLink from '../components/UserLink';
+import UserLink from './UserLink';
 import { api } from '../services/api';
 
 // Mock api
