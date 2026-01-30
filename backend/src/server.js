@@ -15,6 +15,17 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { uploadJSONToIPFS, uploadFileToIPFS } from './ipfs.js';
+import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
+import hpp from 'hpp';
+import { body, validationResult } from 'express-validator';
+
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Limit each IP to 100 requests per window
+    standardHeaders: true,
+    legacyHeaders: false,
+});
 
 dotenv.config();
 
@@ -25,16 +36,15 @@ export const app = express();
 const PORT = process.env.PORT || 3001;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/polylance';
 
+app.use(helmet()); // Secure HTTP headers
+app.use(hpp()); // Prevent HTTP Parameter Pollution
 app.use(cors({
-    origin: [
-        process.env.FRONTEND_URL || 'https://localhost:5173',
-        'https://localhost:5174',
-        'http://localhost:5173', // Keep http for fallback
-        'http://localhost:5174'
-    ],
+    origin: process.env.FRONTEND_URL || 'https://localhost:5173',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10kb' })); // Body limiting to prevent DoS
 
 // Database Connection
 mongoose.connect(MONGODB_URI)
@@ -116,55 +126,64 @@ app.get('/api/profiles/:address', async (req, res) => {
     }
 });
 
-app.post('/api/profiles', async (req, res) => {
-    const { address, name, bio, skills, signature, message } = req.body;
-    console.log(`[AUTH] Verifying profile for ${address}`);
-    console.log(`[AUTH] Received body:`, JSON.stringify(req.body, null, 2));
-    try {
-        // Find profile by address OR the default address if using generic nonce
-        let profile = await Profile.findOne({ address: address.toLowerCase() });
-        if (!profile || !profile.nonce) {
-            console.log(`[AUTH] Profile ${address} has no active nonce, checking default...`);
-            profile = await Profile.findOne({ address: '0x0000000000000000000000000000000000000000' });
+app.post('/api/profiles',
+    [
+        body('name').trim().isLength({ min: 2, max: 50 }).escape(),
+        body('bio').trim().isLength({ max: 500 }).escape(),
+        body('skills').trim().isLength({ max: 200 }).escape(),
+    ],
+    async (req, res) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+        const { address, name, bio, skills, signature, message } = req.body;
+        console.log(`[AUTH] Verifying profile for ${address}`);
+        console.log(`[AUTH] Received body:`, JSON.stringify(req.body, null, 2));
+        try {
+            // Find profile by address OR the default address if using generic nonce
+            let profile = await Profile.findOne({ address: address.toLowerCase() });
+            if (!profile || !profile.nonce) {
+                console.log(`[AUTH] Profile ${address} has no active nonce, checking default...`);
+                profile = await Profile.findOne({ address: '0x0000000000000000000000000000000000000000' });
+            }
+
+            if (!profile || !profile.nonce) {
+                console.warn(`[AUTH] No active nonce found for attempt by ${address}`);
+                return res.status(400).json({ error: 'Nonce not found. Please request a nonce first.' });
+            }
+
+            // Verify that the message contains the nonce we generated
+            if (!message || !message.includes(profile.nonce)) {
+                console.warn(`[AUTH] Message does not contain expected nonce ${profile.nonce}`);
+                return res.status(401).json({ error: 'Invalid nonce in message' });
+            }
+
+            const isValid = await verifyMessage({
+                address: address,
+                message: message,
+                signature: signature,
+            });
+
+            console.log(`[AUTH] Signature verification result for ${address}: ${isValid}`);
+
+            if (!isValid) {
+                console.warn(`[AUTH] Invalid signature for address ${address}`);
+                return res.status(401).json({ error: 'Invalid signature' });
+            }
+
+            // Update profile and clear nonce
+            const updatedProfile = await Profile.findOneAndUpdate(
+                { address: address.toLowerCase() },
+                { name, bio, skills, nonce: null },
+                { upsert: true, new: true }
+            );
+            console.log(`[AUTH] Profile updated/verified for ${address}`);
+            res.json(updatedProfile);
+        } catch (error) {
+            console.error(`[AUTH] Verification CRITICAL error for ${address}:`, error);
+            res.status(500).json({ error: 'Internal server error during verification' });
         }
-
-        if (!profile || !profile.nonce) {
-            console.warn(`[AUTH] No active nonce found for attempt by ${address}`);
-            return res.status(400).json({ error: 'Nonce not found. Please request a nonce first.' });
-        }
-
-        // Verify that the message contains the nonce we generated
-        if (!message || !message.includes(profile.nonce)) {
-            console.warn(`[AUTH] Message does not contain expected nonce ${profile.nonce}`);
-            return res.status(401).json({ error: 'Invalid nonce in message' });
-        }
-
-        const isValid = await verifyMessage({
-            address: address,
-            message: message,
-            signature: signature,
-        });
-
-        console.log(`[AUTH] Signature verification result for ${address}: ${isValid}`);
-
-        if (!isValid) {
-            console.warn(`[AUTH] Invalid signature for address ${address}`);
-            return res.status(401).json({ error: 'Invalid signature' });
-        }
-
-        // Update profile and clear nonce
-        const updatedProfile = await Profile.findOneAndUpdate(
-            { address: address.toLowerCase() },
-            { name, bio, skills, nonce: null },
-            { upsert: true, new: true }
-        );
-        console.log(`[AUTH] Profile updated/verified for ${address}`);
-        res.json(updatedProfile);
-    } catch (error) {
-        console.error(`[AUTH] Verification CRITICAL error for ${address}:`, error);
-        res.status(500).json({ error: 'Internal server error during verification' });
-    }
-});
+    });
 
 // Job Metadata Routes
 app.get('/api/jobs', async (req, res) => {
@@ -187,21 +206,30 @@ app.get('/api/jobs/:jobId', async (req, res) => {
     }
 });
 
-app.post('/api/jobs', async (req, res) => {
-    const { jobId, title, description, category, tags } = req.body;
-    try {
-        const job = await JobMetadata.create({
-            jobId: parseInt(jobId),
-            title,
-            description,
-            category,
-            tags,
-        });
-        res.json(job);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
+app.post('/api/jobs',
+    [
+        body('title').trim().isLength({ min: 5, max: 100 }).escape(),
+        body('description').trim().isLength({ min: 10, max: 2000 }).escape(),
+        body('category').trim().notEmpty().escape(),
+    ],
+    async (req, res) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+        const { jobId, title, description, category, tags } = req.body;
+        try {
+            const job = await JobMetadata.create({
+                jobId: parseInt(jobId),
+                title,
+                description,
+                category,
+                tags,
+            });
+            res.json(job);
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
 
 app.get('/api/leaderboard', async (req, res) => {
     try {
@@ -242,7 +270,7 @@ app.get('/api/portfolios/:address', async (req, res) => {
 });
 
 // AI Job Matching
-app.post('/api/profiles/polish-bio', async (req, res) => {
+app.post('/api/profiles/polish-bio', apiLimiter, async (req, res) => {
     const { name, category, skills, bio } = req.body;
     try {
         const { polishProfileBio } = await import('./aiMatcher.js');
@@ -253,7 +281,7 @@ app.post('/api/profiles/polish-bio', async (req, res) => {
     }
 });
 
-app.get('/api/jobs/match/:jobId', async (req, res) => {
+app.get('/api/jobs/match/:jobId', apiLimiter, async (req, res) => {
     const { jobId } = req.params;
     try {
         const job = await JobMetadata.findOne({ jobId: parseInt(jobId) });
@@ -344,7 +372,7 @@ app.get('/api/analytics', async (req, res) => {
 // IPFS Storage Routes
 const upload = multer({ storage: multer.memoryStorage() });
 
-app.post('/api/storage/upload-json', async (req, res) => {
+app.post('/api/storage/upload-json', apiLimiter, async (req, res) => {
     try {
         const cid = await uploadJSONToIPFS(req.body);
         res.json({ cid, url: `https://gateway.pinata.cloud/ipfs/${cid}` });
@@ -353,7 +381,7 @@ app.post('/api/storage/upload-json', async (req, res) => {
     }
 });
 
-app.post('/api/storage/upload-file', upload.single('file'), async (req, res) => {
+app.post('/api/storage/upload-file', apiLimiter, upload.single('file'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
         const cid = await uploadFileToIPFS(req.file.buffer, req.file.originalname);

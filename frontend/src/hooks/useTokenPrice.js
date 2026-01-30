@@ -20,17 +20,21 @@ export function useTokenPrice(symbol = 'MATIC') {
     });
 
     const price = roundData ? Number(formatUnits(roundData[1], 8)) : 0;
+    const updatedAt = roundData ? Number(roundData[3]) : 0;
+    const isStale = updatedAt > 0 && (Math.floor(Date.now() / 1000) - updatedAt) > 3600;
 
     const convertToUsd = (amount, decimals = 18) => {
-        if (!price || !amount) return 0;
+        if (!price || !amount || isStale) return 0;
         const normalizedAmount = Number(formatUnits(amount, decimals));
         return (normalizedAmount * price);
     };
 
     return {
         price,
+        isStale,
+        updatedAt,
         convertToUsd,
         isLoading,
-        isError
+        isError: isError || isStale
     };
 }

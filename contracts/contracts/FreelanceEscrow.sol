@@ -27,6 +27,9 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
     address public polyToken;
     address public reputationContract;
     address public completionCertContract;
+    bool public emergencyMode; 
+
+    error EmergencyActive();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -167,6 +170,12 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
         _unpause();
     }
 
+    function toggleEmergencyMode(bool _active) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        emergencyMode = _active;
+        if (_active) _pause();
+        else _unpause();
+    }
+
     struct CreateParams {
         uint256 categoryId;
         address freelancer;
@@ -226,7 +235,7 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
         job.totalPaidOut += amt;
         
         _sendFunds(job.freelancer, job.token, amt);
-        emit MilestoneReleased(jobId, mId, amt);
+        emit MilestoneReleased(jobId, job.freelancer, mId, amt);
     }
 
     /**
@@ -294,7 +303,11 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
         Job storage job = jobs[jobId];
         if (_msgSender() != job.client) revert NotAuthorized();
         if (job.status != JobStatus.Created && job.status != JobStatus.Accepted) revert InvalidStatus();
-        if (block.timestamp < job.deadline && job.deadline != 0) revert InvalidStatus();
+        
+        // In Emergency Mode, bypass deadline check
+        if (!emergencyMode) {
+             if (block.timestamp < job.deadline && job.deadline != 0) revert InvalidStatus();
+        }
 
         job.status = JobStatus.Cancelled;
         job.paid = true;

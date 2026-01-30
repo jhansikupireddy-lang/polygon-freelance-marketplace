@@ -212,8 +212,19 @@ function JobsList({ onUserClick, onSelectChat, gasless }) {
     );
 }
 
-function JobCard({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, onUserClick, onSelectChat, gasless }) {
+const JobCard = React.memo(({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, onUserClick, onSelectChat, gasless }) => {
     const { address } = useAccount();
+    const [inView, setInView] = React.useState(false);
+    const cardRef = React.useRef();
+
+    React.useEffect(() => {
+        const observer = new IntersectionObserver(([entry]) => {
+            if (entry.isIntersecting) setInView(true);
+        }, { threshold: 0.1 });
+        if (cardRef.current) observer.observe(cardRef.current);
+        return () => observer.disconnect();
+    }, []);
+
     const signer = useEthersSigner();
     const [metadata, setMetadata] = React.useState(null);
     const [matchScore, setMatchScore] = React.useState(null);
@@ -243,6 +254,7 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, 
     }, [isSuccess]);
 
     React.useEffect(() => {
+        if (!inView) return; // Only fetch when in view
         const fetchMetadata = async () => {
             try {
                 const data = await api.getJobMetadata(jobId);
@@ -258,7 +270,7 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, 
             }
         };
         fetchMetadata();
-    }, [jobId, address]);
+    }, [jobId, address, inView]);
 
     if (!job) return null;
 
@@ -338,7 +350,7 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, 
     };
 
     return (
-        <div className="glass-card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <div ref={cardRef} className="glass-card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
                 <div className={`badge ${status === 3 ? 'badge-warning' : 'badge-info'}`}>
                     {statusLabels[status]}
@@ -438,6 +450,6 @@ function JobCard({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, 
             </div>
         </div>
     );
-}
+}); // Closing memo
 
 export default JobsList;

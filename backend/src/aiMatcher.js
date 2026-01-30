@@ -25,27 +25,17 @@ export async function calculateMatchScore(jobDescription, freelancerProfile) {
         });
 
         const prompt = `
-            # ROLE: POLY-AGENCY AUTONOMOUS RECRUITER v2
-            Assess the technical synergy between this Job and Freelancer.
+            # POLY-AGENCY AGENT v2.1
+            Analyze synergy between Job and Freelancer. 
+            Skepticism level: HIGH.
 
-            JOB REQUIREMENTS: "${jobDescription}"
-            FREELANCER DNA: "${freelancerProfile.skills}"
-            ON-CHAIN REPUTATION: ${freelancerProfile.reputationScore}/1000
-            STABILITY SCORE: ${freelancerProfile.completedJobs} / ${freelancerProfile.disputedJobs || 0} (Jobs/Disputes)
+            JOB: "${jobDescription}"
+            FREELANCER: "${freelancerProfile.skills}"
+            REP: ${freelancerProfile.reputationScore}/1000
+            JOBS/DISP: ${freelancerProfile.completedJobs}/${freelancerProfile.disputedJobs || 0}
 
-            # TASK: 
-            Perform a multi-dimensional fit analysis. Be extremely skeptical. Look for "Skill Inflation".
-            
-            # OUTPUT (JSON ONLY):
-            {
-                "score": 0.0-1.0,
-                "reason": "Executive summary with zero fluff",
-                "strengths": ["Verified skill 1", "Verified skill 2"],
-                "gaps": ["Missing context 1"],
-                "riskLevel": "Low/Med/High",
-                "proTip": "A strategic competitive edge for the application",
-                "agentNotes": "Technical nuance about the match"
-            }
+            OUTPUT ONLY JSON:
+            {"score":0.0-1.0,"reason":"Summary","strengths":[],"gaps":[],"riskLevel":"L/M/H","proTip":"Advice","agentNotes":"Log"}
         `;
 
         const result = await model.generateContent(prompt);
