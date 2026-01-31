@@ -1,0 +1,33 @@
+WARNING: You are currently using Node.js v22.19.0, which is not supported by Hardhat. This can lead to unexpected behavior. See https://hardhat.org/nodejs-versions
+
+
+[dotenv@17.2.3] injecting env (3) from .env -- tip: ≡ƒöæ add access controls to secrets: https://dotenvx.com/ops
+Warning: This declaration shadows an existing declaration.
+   --> contracts/FreelanceEscrow.sol:330:13:
+    |
+330 |             bool isSupremeMember = false;
+    |             ^^^^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/FreelanceEscrow.sol:281:9:
+    |
+281 |         bool isSupremeMember = false;
+    |         ^^^^^^^^^^^^^^^^^^^^
+
+
+DeclarationError: Undeclared identifier. Did you mean "privacyShield"?
+   --> contracts/FreelanceEscrow.sol:291:17:
+    |
+291 |             try PrivacyShield(privacyShield).isVerified(job.freelancer) returns (bool verified) {
+    |                 ^^^^^^^^^^^^^
+
+
+DeclarationError: Undeclared identifier. Did you mean "privacyShield"?
+   --> contracts/FreelanceEscrow.sol:338:21:
+    |
+338 |                 try PrivacyShield(privacyShield).isVerified(job.freelancer) returns (bool verified) {
+    |                     ^^^^^^^^^^^^^
+
+
+Error HH600: Compilation failed
+
+For more info go to https://hardhat.org/HH600 or run Hardhat with --show-stack-traces

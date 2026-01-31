@@ -5,6 +5,8 @@ const jobMetadataSchema = new mongoose.Schema({
     title: { type: String, required: true },
     description: { type: String, required: true },
     category: { type: String },
+    freelancer: { type: String, lowercase: true },
+    status: { type: Number, default: 0 },
     tags: { type: String },
     ipfsHash: { type: String }, // Link to immutable contract details
     review: { type: String },
@@ -13,6 +15,11 @@ const jobMetadataSchema = new mongoose.Schema({
         amount: String,
         description: String,
         isReleased: { type: Boolean, default: false }
+    }],
+    applicants: [{
+        address: { type: String, lowercase: true },
+        stake: String,
+        timestamp: { type: Date, default: Date.now }
     }]
 }, { timestamps: true });
 

@@ -13,6 +13,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./FreelanceRenderer.sol";
 import "./FreelanceEscrowBase.sol";
 import "./interfaces/IFreelanceSBT.sol";
+import "./PrivacyShield.sol";
 
 /**
  * @title FreelanceEscrow
@@ -24,9 +25,14 @@ import "./interfaces/IFreelanceSBT.sol";
 contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrable, OwnableUpgradeable {
     using SafeERC20 for IERC20;
 
+    event JobApplied(uint256 indexed jobId, address indexed freelancer, uint256 stake);
+    event FreelancerPicked(uint256 indexed jobId, address indexed freelancer);
+    event JobAccepted(uint256 indexed jobId, address indexed freelancer);
+
     address public polyToken;
     address public reputationContract;
     address public completionCertContract;
+    address public privacyShield;
     bool public emergencyMode; 
 
     error EmergencyActive();
@@ -100,10 +106,17 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
         tokenWhitelist[_token] = _status;
     }
 
+    function setPrivacyShield(address _ps) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        privacyShield = _ps;
+    }
+
+    uint256 public constant MAX_APPLICATIONS_PER_JOB = 50;
+
     function applyForJob(uint256 jobId) external payable whenNotPaused nonReentrant {
         Job storage job = jobs[jobId];
         if (job.status != JobStatus.Created) revert InvalidStatus();
         if (hasApplied[jobId][_msgSender()]) revert InvalidStatus();
+        if (jobApplications[jobId].length >= MAX_APPLICATIONS_PER_JOB) revert NotAuthorized(); // Simplified error for "Capacity Reached"
 
         uint256 stake = (job.amount * 5) / 100;
 
@@ -115,6 +128,8 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
 
         jobApplications[jobId].push(Application(_msgSender(), stake));
         hasApplied[jobId][_msgSender()] = true;
+        
+        emit JobApplied(jobId, _msgSender(), stake);
     }
 
     function pickFreelancer(uint256 jobId, address freelancer) external whenNotPaused {
@@ -134,6 +149,8 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
                 job.freelancerStake = apps[i].stake;
             }
         }
+
+        emit FreelancerPicked(jobId, freelancer);
     }
 
     function acceptJob(uint256 jobId) external payable whenNotPaused nonReentrant {
@@ -146,6 +163,7 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
         }
 
         job.status = JobStatus.Ongoing;
+        emit JobAccepted(jobId, _msgSender());
     }
 
     function submitWork(uint256 jobId, string memory ipfsHash) external whenNotPaused {
@@ -232,7 +250,7 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
     /**
      * @notice Stage-based release of funds.
      */
-    function releaseMilestone(uint256 jobId, uint256 mId) external whenNotPaused nonReentrant {
+    function releaseMilestone(uint256 jobId, uint256 mId) public whenNotPaused nonReentrant {
         Job storage job = jobs[jobId];
         if (_msgSender() != job.client) revert NotAuthorized();
         
@@ -263,13 +281,23 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
         // Fee cannot exceed the remaining payout (prevents underflow)
         if (fee > payout) fee = payout;
 
-        // Supreme Level Check: 0% Fee for Elite Veterans
+        // Supreme Level Check: 0% Fee for Elite Veterans or Private Verified Users
+        bool isSupremeMember = false;
         if (reputationContract != address(0)) {
             (bool success, bytes memory data) = reputationContract.call(abi.encodeWithSignature("balanceOf(address,uint256)", job.freelancer, job.categoryId));
             if (success && data.length >= 32) {
-                if (abi.decode(data, (uint256)) >= 10) fee = 0;
+                if (abi.decode(data, (uint256)) >= reputationThreshold) isSupremeMember = true;
             }
         }
+        
+        // ZK-Privacy Shield Backup
+        if (!isSupremeMember && privacyShield != address(0)) {
+            try PrivacyShield(privacyShield).isVerified(job.freelancer) returns (bool verified) {
+                if (verified) isSupremeMember = true;
+            } catch {}
+        }
+
+        if (isSupremeMember) fee = 0;
         
         uint256 freelancerNet = payout - fee;
 
@@ -303,13 +331,20 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
         if (polyToken != address(0)) {
             uint256 reward = 100 * 1e18;
             // Supreme Level Check: 3x Loyalty Boost
+            isSupremeMember = false;
             if (reputationContract != address(0)) {
                 (bool s, bytes memory data) = reputationContract.call(abi.encodeWithSignature("balanceOf(address,uint256)", job.freelancer, job.categoryId));
                 if (s && data.length >= 32) {
-                    uint256 bal = abi.decode(data, (uint256));
-                    if (bal >= 10) reward = 300 * 1e18; // 3x Boost for Vets
+                    if (abi.decode(data, (uint256)) >= reputationThreshold) isSupremeMember = true;
                 }
             }
+            if (!isSupremeMember && privacyShield != address(0)) {
+                try PrivacyShield(privacyShield).isVerified(job.freelancer) returns (bool verified) {
+                    if (verified) isSupremeMember = true;
+                } catch {}
+            }
+
+            if (isSupremeMember) reward = 300 * 1e18; // 3x Boost for Vets
             (bool success, ) = polyToken.call(abi.encodeWithSignature("mint(address,uint256)", job.freelancer, reward));
             (success);
         }

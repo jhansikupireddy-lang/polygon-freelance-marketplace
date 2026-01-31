@@ -130,16 +130,21 @@ export function isBiconomyAvailable() {
  * @param {string} ipfsHash - IPFS hash
  * @returns {Promise<object>} Gas estimation
  */
-export async function estimateGasSavings(provider, contractAddress, contractABI, jobId, ipfsHash) {
+export async function estimateGasSavings(publicClient, contractAddress, contractABI, jobId, ipfsHash) {
     try {
-        const contract = new provider.eth.Contract(contractABI, contractAddress);
-        const gasEstimate = await contract.methods.submitWork(jobId, ipfsHash).estimateGas();
-        const gasPrice = await provider.eth.getGasPrice();
-        const estimatedCost = (gasEstimate * gasPrice) / 1e18; // Convert to MATIC
+        const gasEstimate = await publicClient.estimateContractGas({
+            address: contractAddress,
+            abi: contractABI,
+            functionName: 'submitWork',
+            args: [BigInt(jobId), ipfsHash],
+        });
+
+        const gasPrice = await publicClient.getGasPrice();
+        const estimatedCost = (gasEstimate * gasPrice) / 10n ** 18n; // Approximate MATIC
 
         return {
             gasEstimate,
-            gasCostInMATIC: estimatedCost.toFixed(6),
+            gasCostInMATIC: estimatedCost.toString(),
             savedWithBiconomy: true
         };
     } catch (error) {

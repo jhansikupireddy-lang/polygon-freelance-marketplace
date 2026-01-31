@@ -11,7 +11,7 @@ module.exports = {
                 settings: {
                     optimizer: {
                         enabled: true,
-                        runs: 200
+                        runs: 2000
                     }
                 }
             },
@@ -30,7 +30,12 @@ module.exports = {
     },
     networks: {
         hardhat: {
-            hardfork: "shanghai"
+            hardfork: "shanghai",
+            allowUnlimitedContractSize: true
+        },
+        localhost: {
+            url: "http://127.0.0.1:8545",
+            allowUnlimitedContractSize: true
         },
         polygon_amoy: {
             url: process.env.POLYGON_AMOY_RPC_URL || "https://rpc-amoy.polygon.technology/",

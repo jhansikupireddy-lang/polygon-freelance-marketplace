@@ -1,12 +1,13 @@
 {
-  "PolyToken": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
-  "InsurancePool": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
-  "PolyLanceForwarder": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
-  "FreelanceEscrow": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
-  "FreelancerReputation": "0x0165878A594ca255338adfa4d48449f69242Eb8F",
-  "StreamingEscrow": "0xa513E6E4b8f2a923D98304ec87F64353C4D5C853",
-  "FreelanceSBT": "0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6",
-  "FreelanceGovernance": "0x959922bE3CAee4b8Cd9a407cc3ac1C251C2007B1",
-  "network": "hardhat",
+  "PolyToken": "0xd3b893cd083f07Fe371c1a87393576e7B01C52C6",
+  "InsurancePool": "0x3BFbbf82657577668144921b96aAb72BC170646C",
+  "PolyLanceForwarder": "0x930b218f3e63eE452c13561057a8d5E61367d5b7",
+  "FreelanceEscrow": "0x38c76A767d45Fc390160449948aF80569E2C4217",
+  "FreelancerReputation": "0xDC57724Ea354ec925BaFfCA0cCf8A1248a8E5CF1",
+  "StreamingEscrow": "0xfc073209b7936A771F77F63D42019a3a93311869",
+  "FreelanceSBT": "0xb4e9A5BC64DC07f890367F72941403EEd7faDCbB",
+  "PolyTimelock": "0x20Dc424c5fa468CbB1c702308F0cC9c14DA2825C",
+  "FreelanceGovernance": "0x4653251486a57f90Ee89F9f34E098b9218659b83",
+  "network": "localhost",
   "chainId": "31337"
 }

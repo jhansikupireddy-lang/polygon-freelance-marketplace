@@ -54,6 +54,8 @@ export async function startSyncer() {
                             title: `Job #${jobId} (On-chain)`,
                             description: 'Metadata sync pending...',
                             category: 'General',
+                            freelancer: freelancer === '0x0000000000000000000000000000000000000000' ? null : freelancer.toLowerCase(),
+                            status: freelancer === '0x0000000000000000000000000000000000000000' ? 0 : 1
                         });
                     }
 
@@ -89,6 +91,11 @@ export async function startSyncer() {
                             $inc: { totalEarned: maticAmount, completedJobs: 1 }
                         },
                         { upsert: true, new: true }
+                    );
+
+                    await JobMetadata.findOneAndUpdate(
+                        { jobId: Number(jobId) },
+                        { $set: { status: 5 } } // Completed
                     );
 
                     await sendNotification(
@@ -210,6 +217,108 @@ export async function startSyncer() {
                     }
                 } catch (error) {
                     console.error('Error handling MilestoneReleased:', error);
+                }
+            }
+        }
+    });
+
+    // Watch for JobApplied
+    client.watchEvent({
+        address: CONTRACT_ADDRESS,
+        event: parseAbiItem('event JobApplied(uint256 indexed jobId, address indexed freelancer, uint256 stake)'),
+        onLogs: async (logs) => {
+            for (const log of logs) {
+                try {
+                    const { jobId, freelancer, stake } = log.args;
+                    console.log(`Job Applied: Job ${jobId}, Freelancer ${freelancer}, Stake ${stake}`);
+
+                    await JobMetadata.findOneAndUpdate(
+                        { jobId: Number(jobId) },
+                        {
+                            $push: {
+                                applicants: {
+                                    address: freelancer.toLowerCase(),
+                                    stake: stake.toString()
+                                }
+                            }
+                        }
+                    );
+
+                    const job = await client.readContract({
+                        address: CONTRACT_ADDRESS,
+                        abi: abi,
+                        functionName: 'jobs',
+                        args: [jobId]
+                    });
+
+                    await sendNotification(
+                        job[0], // client
+                        "New Application 🚀",
+                        `A new freelancer has applied for Job #${jobId}.`
+                    );
+                } catch (error) {
+                    console.error('Error handling JobApplied:', error);
+                }
+            }
+        }
+    });
+
+    // Watch for FreelancerPicked
+    client.watchEvent({
+        address: CONTRACT_ADDRESS,
+        event: parseAbiItem('event FreelancerPicked(uint256 indexed jobId, address indexed freelancer)'),
+        onLogs: async (logs) => {
+            for (const log of logs) {
+                try {
+                    const { jobId, freelancer } = log.args;
+                    console.log(`Freelancer Picked: Job ${jobId}, Chosen ${freelancer}`);
+
+                    await JobMetadata.findOneAndUpdate(
+                        { jobId: Number(jobId) },
+                        { $set: { freelancer: freelancer.toLowerCase(), status: 1 } }
+                    );
+
+                    await sendNotification(
+                        freelancer,
+                        "You've been picked! 🎉",
+                        `The client of Job #${jobId} has selected you. Accept to start!`
+                    );
+                } catch (error) {
+                    console.error('Error handling FreelancerPicked:', error);
+                }
+            }
+        }
+    });
+
+    // Watch for JobAccepted
+    client.watchEvent({
+        address: CONTRACT_ADDRESS,
+        event: parseAbiItem('event JobAccepted(uint256 indexed jobId, address indexed freelancer)'),
+        onLogs: async (logs) => {
+            for (const log of logs) {
+                try {
+                    const { jobId, freelancer } = log.args;
+                    console.log(`Job Accepted: Job ${jobId}, Freelancer ${freelancer}`);
+
+                    await JobMetadata.findOneAndUpdate(
+                        { jobId: Number(jobId) },
+                        { $set: { status: 2 } } // Ongoing
+                    );
+
+                    const job = await client.readContract({
+                        address: CONTRACT_ADDRESS,
+                        abi: abi,
+                        functionName: 'jobs',
+                        args: [jobId]
+                    });
+
+                    await sendNotification(
+                        job[0], // client
+                        "Project Started! 🚀",
+                        `The freelancer has accepted Job #${jobId}. Work is now ongoing.`
+                    );
+                } catch (error) {
+                    console.error('Error handling JobAccepted:', error);
                 }
             }
         }

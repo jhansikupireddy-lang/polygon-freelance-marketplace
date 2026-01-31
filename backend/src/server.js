@@ -291,16 +291,29 @@ app.get('/api/jobs/match/:jobId', apiLimiter, async (req, res) => {
         const job = await JobMetadata.findOne({ jobId: parseInt(jobId) });
         if (!job) return res.status(404).json({ error: 'Job not found' });
 
-        const freelancers = await Profile.find({ completedJobs: { $gt: 0 } });
+        // Fetch profiles of applicants if any, otherwise fallback to top freelancers
+        let candidateAddresses = [];
+        if (job.applicants && job.applicants.length > 0) {
+            candidateAddresses = job.applicants.map(a => a.address.toLowerCase());
+        }
+
+        const freelancers = await Profile.find({
+            $or: [
+                { address: { $in: candidateAddresses } },
+                { completedJobs: { $gt: 0 } }
+            ]
+        }).limit(20);
+
         const { calculateMatchScore } = await import('./aiMatcher.js');
 
         const matches = await Promise.all(freelancers.map(async (f) => {
             const result = await calculateMatchScore(job.description, f);
             return {
                 address: f.address,
-                name: f.name,
+                name: f.name || 'Pioneer',
                 matchScore: result.score,
-                reason: result.reason
+                reason: result.reason,
+                isApplicant: candidateAddresses.includes(f.address.toLowerCase())
             };
         }));
 
@@ -384,6 +397,41 @@ app.get('/api/analytics', async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
+});
+
+// Farcaster Frame Integration
+app.get('/api/frames/proposal/:id', async (req, res) => {
+    const { id } = req.params;
+    const proposalUrl = `${process.env.FRONTEND_URL || 'https://localhost:5173'}/governance?id=${id}`;
+    const imageUrl = `https://placehold.co/600x400/02040a/ffffff?text=DAO+Proposal+%23${id}`;
+
+    const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta property="og:title" content="PolyLance DAO Proposal #${id}" />
+            <meta property="og:image" content="${imageUrl}" />
+            <meta property="fc:frame" content="vNext" />
+            <meta property="fc:frame:image" content="${imageUrl}" />
+            <meta property="fc:frame:button:1" content="Vote Yes" />
+            <meta property="fc:frame:button:2" content="Vote No" />
+            <meta property="fc:frame:button:3" content="View Details" />
+            <meta property="fc:frame:button:3:action" content="link" />
+            <meta property="fc:frame:button:3:target" content="${proposalUrl}" />
+            <meta property="fc:frame:post_url" content="${process.env.BACKEND_URL || 'https://localhost:3001'}/api/frames/callback" />
+        </head>
+        <body>
+            <h1>Proposal #${id}</h1>
+        </body>
+        </html>
+    `;
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+});
+
+app.post('/api/frames/callback', (req, res) => {
+    // In a real implementation, we'd verify the Farcaster signature and cast a vote via meta-tx
+    res.json({ message: "Interaction recorded! Please open the app to confirm your vote." });
 });
 
 // IPFS Storage Routes

@@ -22,4 +22,11 @@ abstract contract OApp is Ownable {
     }
 
     // placeholder for _lzSend and _lzReceive
+    function _lzReceive(
+        uint32 _srcEid,
+        bytes32 _guid,
+        bytes memory _message,
+        address _executor,
+        bytes memory _extraData
+    ) internal virtual;
 }

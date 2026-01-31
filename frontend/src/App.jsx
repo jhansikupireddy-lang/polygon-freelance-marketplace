@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
+import logo from './assets/logo.png';
 import { Briefcase, PlusCircle, LayoutDashboard, Ticket, MessageSquare, Trophy, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Dashboard from './components/Dashboard';
@@ -9,12 +10,14 @@ import NFTGallery from './components/NFTGallery';
 import Chat from './components/Chat';
 import Leaderboard from './components/Leaderboard';
 import Portfolio from './components/Portfolio';
+import DaoDashboard from './components/DaoDashboard';
 import TermsOfService from './components/TermsOfService';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import { NotificationManager } from './components/NotificationManager';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { useAccount, useBalance } from 'wagmi';
+import { Briefcase, PlusCircle, LayoutDashboard, Ticket, MessageSquare, Trophy, User, Gavel } from 'lucide-react';
 
 function App() {
   const { address } = useAccount();
@@ -40,6 +43,7 @@ function App() {
       case 'nfts': return <NFTGallery />;
       case 'chat': return <Chat initialPeerAddress={chatPeerAddress} onClearedAddress={() => setChatPeerAddress(null)} />;
       case 'leaderboard': return <Leaderboard />;
+      case 'dao': return <DaoDashboard />;
       case 'tos': return <TermsOfService onBack={() => setActiveTab('dashboard')} />;
       case 'privacy': return <PrivacyPolicy onBack={() => setActiveTab('dashboard')} />;
       default: return <Dashboard />;
@@ -77,10 +81,10 @@ function App() {
       <div className="app-layout">
         <aside className="sidebar-premium">
           <div className="brand mb-12" onClick={() => setActiveTab('dashboard')} style={{ cursor: 'pointer' }}>
-            <div className="w-10 h-10 bg-primary/20 rounded-xl flex items-center justify-center border border-primary/30 shadow-[0_0_15px_rgba(139,92,246,0.3)]">
-              <Briefcase size={22} className="text-primary active-icon" />
+            <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center border border-primary/30 shadow-[0_0_15px_rgba(139,92,246,0.3)]">
+              <img src={logo} alt="PolyLance Zenith" className="w-full h-full object-cover" />
             </div>
-            <span className="shimmer-text font-bold text-2xl tracking-tighter">PolyLance</span>
+            <span className="shimmer-text font-bold text-2xl tracking-tighter">Zenith</span>
           </div>
 
           <nav className="nav-vertical">
@@ -119,6 +123,12 @@ function App() {
               className={`nav-link ${activeTab === 'chat' ? 'active' : ''}`}
             >
               <MessageSquare size={18} /> Messenger
+            </button>
+            <button
+              onClick={() => setActiveTab('dao')}
+              className={`nav-link ${activeTab === 'dao' ? 'active' : ''}`}
+            >
+              <Gavel size={18} /> Governance
             </button>
           </nav>
 
@@ -230,6 +240,7 @@ function App() {
                   <button onClick={() => setActiveTab('nfts')} className="footer-link">Gallery</button>
                   <button onClick={() => setActiveTab('leaderboard')} className="footer-link">Leaders</button>
                   <button onClick={() => setActiveTab('chat')} className="footer-link">Messenger</button>
+                  <button onClick={() => setActiveTab('dao')} className="footer-link">Governance</button>
                 </div>
 
                 <div className="footer-nav-col">

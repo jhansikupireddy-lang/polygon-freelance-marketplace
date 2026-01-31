@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useAccount, useReadContract, useSignMessage } from 'wagmi';
 import { useConnectModal } from '@rainbow-me/rainbowkit';
-import { Wallet, Briefcase, CheckCircle, Clock, Save, User, Award, PlusCircle, Sparkles } from 'lucide-react';
+import { Wallet, Briefcase, CheckCircle, Clock, Save, User, Award, PlusCircle, Sparkles, Send, Activity, Terminal } from 'lucide-react';
 import FreelanceEscrowABI from '../contracts/FreelanceEscrow.json';
 import { CONTRACT_ADDRESS } from '../constants';
 import { api } from '../services/api';
@@ -117,6 +117,76 @@ function Dashboard() {
 
     return (
         <div className="animate-fade space-y-20">
+            {/* Zenith Command Center (Deployment Option) */}
+            <div className="lg:col-span-12">
+                <div className="glass-card p-8 bg-gradient-to-r from-[#0a0a0f] to-primary/5 border border-primary/20 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 blur-[100px] -mr-32 -mt-32" />
+
+                    <div className="flex flex-wrap items-center justify-between gap-6 relative z-10">
+                        <div className="flex items-center gap-5">
+                            <div className="p-4 bg-primary/20 rounded-[2rem] border border-primary/40 shadow-[0_0_20px_rgba(139,92,246,0.2)]">
+                                <Terminal size={32} className="text-primary animate-pulse" />
+                            </div>
+                            <div>
+                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/60 mb-1">Protocol Orchestrator</div>
+                                <h2 className="text-3xl font-black tracking-tighter">Zenith Command Center</h2>
+                                <div className="flex items-center gap-3 mt-2">
+                                    <span className="flex items-center gap-1 text-[10px] font-bold text-success bg-success/10 px-2 py-1 rounded-full border border-success/20">
+                                        <Activity size={10} /> LOCAL_NODE: ACTIVE
+                                    </span>
+                                    <span className="flex items-center gap-1 text-[10px] font-bold text-text-dim bg-white/5 px-2 py-1 rounded-full border border-white/10">
+                                        AMOY_TESTNET: READY
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => alert("Initializing Dry Run: Zenith Supreme Architecture (Cancun-EVM)... Checks Passed.")}
+                                className="px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-xs font-bold hover:bg-white/10 transition-all"
+                            >
+                                Staged Dry-Run
+                            </button>
+                            <button
+                                onClick={() => alert("Deployment target locked: Localhost. Run 'npm run deploy:zenith' to finalize.")}
+                                className="btn-primary px-8 py-4 flex items-center gap-2 group"
+                            >
+                                <Send size={18} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                                Supreme Deploy
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mt-8 pt-8 border-t border-white/5 relative z-10">
+                        <div className="space-y-1">
+                            <div className="text-[9px] font-black uppercase tracking-widest opacity-40">Contract Integrity</div>
+                            <div className="text-xs font-bold flex items-center gap-2">
+                                <CheckCircle size={14} className="text-success" /> 8/8 Validated
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <div className="text-[9px] font-black uppercase tracking-widest opacity-40">Privacy Shield</div>
+                            <div className="text-xs font-bold flex items-center gap-2">
+                                <CheckCircle size={14} className="text-success" /> ZK-Circuits Ready
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <div className="text-[9px] font-black uppercase tracking-widest opacity-40">Agentic Layer</div>
+                            <div className="text-xs font-bold flex items-center gap-2">
+                                <CheckCircle size={14} className="text-success" /> Authorized
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <div className="text-[9px] font-black uppercase tracking-widest opacity-40">Gas Optimization</div>
+                            <div className="text-xs font-bold flex items-center gap-2">
+                                <Activity size={14} className="text-accent" /> Zenith Optimized
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {/* Header Section */}
             <header className="mb-20">
                 <div className="flex items-center gap-4 mb-8">

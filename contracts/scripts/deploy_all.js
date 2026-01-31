@@ -172,8 +172,16 @@ async function main() {
         await deployedRep.grantRole(MINTER_ROLE, addresses.StreamingEscrow);
         console.log("Granted MINTER_ROLE to StreamingEscrow on Reputation.");
 
-        // 8. Deploy Governance
-        console.log("\n8. Deploying FreelanceGovernance...");
+        // 8. Deploy Governance & Timelock
+        console.log("\n8. Deploying PolyTimelock...");
+        const PolyTimelock = await ethers.getContractFactory("PolyTimelock");
+        // minDelay = 1, proposers = [], executors = [], admin = deployer
+        const timelock = await PolyTimelock.deploy(1, [deployer.address], [deployer.address], deployer.address);
+        await timelock.waitForDeployment();
+        addresses.PolyTimelock = await timelock.getAddress();
+        console.log("PolyTimelock deployed to:", addresses.PolyTimelock);
+
+        console.log("\n9. Deploying FreelanceGovernance...");
         const FreelanceGovernance = await ethers.getContractFactory("FreelanceGovernance");
         const governance = await FreelanceGovernance.deploy(addresses.FreelanceSBT);
         await governance.waitForDeployment();
@@ -192,6 +200,7 @@ async function main() {
     console.log("FreelancerReputation Proxy:", addresses.FreelancerReputation);
     console.log("StreamingEscrow:     ", addresses.StreamingEscrow);
     console.log("FreelanceGovernance:  ", addresses.FreelanceGovernance);
+    console.log("PolyTimelock:        ", addresses.PolyTimelock);
     console.log("---------------------------\n");
 
     addresses.network = network.name;
@@ -207,8 +216,10 @@ async function main() {
             content = content.replace(/export const CONTRACT_ADDRESS = '.*';/, `export const CONTRACT_ADDRESS = '${addresses.FreelanceEscrow}';`);
             content = content.replace(/export const POLY_TOKEN_ADDRESS = '.*';/, `export const POLY_TOKEN_ADDRESS = '${addresses.PolyToken}';`);
             content = content.replace(/export const STREAMING_ESCROW_ADDRESS = '.*';/, `export const STREAMING_ESCROW_ADDRESS = '${addresses.StreamingEscrow}';`);
+            content = content.replace(/export const GOVERNANCE_ADDRESS = '.*';/, `export const GOVERNANCE_ADDRESS = '${addresses.FreelanceGovernance}';`);
+            content = content.replace(/export const REPUTATION_ADDRESS = '.*';/, `export const REPUTATION_ADDRESS = '${addresses.FreelancerReputation}';`);
             fs.writeFileSync(frontendConfigPath, content);
-            console.log("Updated frontend constants.js with new addresses.");
+            console.log("Updated frontend constants.js with all Zenith addresses.");
         }
     } catch (e) {
         console.log("Warning: Could not update frontend constants:", e.message);

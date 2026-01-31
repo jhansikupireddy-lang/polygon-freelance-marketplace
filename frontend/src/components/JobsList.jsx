@@ -15,7 +15,7 @@ import { uploadJSONToIPFS } from '../utils/ipfs';
 import { createBiconomySmartAccount, submitWorkGasless } from '../utils/biconomy';
 import { useTokenPrice } from '../hooks/useTokenPrice';
 
-const statusLabels = ['Created', 'Accepted', 'Ongoing', 'Disputed', 'Completed', 'Cancelled'];
+const statusLabels = ['Created', 'Accepted', 'Ongoing', 'Disputed', 'Arbitration', 'Completed', 'Cancelled'];
 
 function JobsList({ onUserClick, onSelectChat, gasless }) {
     const { address } = useAccount();
@@ -25,6 +25,7 @@ function JobsList({ onUserClick, onSelectChat, gasless }) {
     const [minBudget, setMinBudget] = React.useState('');
     const [sortBy, setSortBy] = React.useState('Newest');
     const [statusFilter, setStatusFilter] = React.useState('All');
+    const [showMyJobs, setShowMyJobs] = React.useState(false);
     const [aiResults, setAiResults] = React.useState(null);
     const [isAiLoading, setIsAiLoading] = React.useState(false);
 
@@ -200,6 +201,7 @@ function JobsList({ onUserClick, onSelectChat, gasless }) {
                                 searchQuery={searchQuery}
                                 minBudget={minBudget}
                                 statusFilter={statusFilter}
+                                showMyJobs={showMyJobs}
                                 onUserClick={onUserClick}
                                 onSelectChat={onSelectChat}
                                 gasless={gasless}
@@ -212,7 +214,7 @@ function JobsList({ onUserClick, onSelectChat, gasless }) {
     );
 }
 
-const JobCard = React.memo(({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, onUserClick, onSelectChat, gasless }) => {
+const JobCard = React.memo(({ jobId, categoryFilter, searchQuery, minBudget, statusFilter, showMyJobs, onUserClick, onSelectChat, gasless }) => {
     const { address } = useAccount();
     const { data: walletClient } = useWalletClient();
     const [metadata, setMetadata] = React.useState(null);
@@ -299,15 +301,36 @@ const JobCard = React.memo(({ jobId, categoryFilter, searchQuery, minBudget, sta
     const isClient = address?.toLowerCase() === client.toLowerCase();
     const isFreelancer = address?.toLowerCase() === freelancer.toLowerCase();
     const isArbitrator = address?.toLowerCase() === arbitrator?.toLowerCase();
+    const hasAppliedLocal = metadata?.applicants?.some(a => a.address === address?.toLowerCase());
+
+    if (showMyJobs && !isClient && !isFreelancer && !hasAppliedLocal) return null;
+
+    const handleApply = () => {
+        const requiredStake = (amount * 5n) / 100n;
+        writeContract({
+            address: CONTRACT_ADDRESS,
+            abi: FreelanceEscrowABI.abi,
+            functionName: 'applyForJob',
+            args: [BigInt(jobId)],
+            value: token === '0x0000000000000000000000000000000000000000' ? requiredStake : 0n,
+        });
+    };
+
+    const handlePick = (fAddress) => {
+        writeContract({
+            address: CONTRACT_ADDRESS,
+            abi: FreelanceEscrowABI.abi,
+            functionName: 'pickFreelancer',
+            args: [BigInt(jobId), fAddress],
+        });
+    };
 
     const handleAccept = () => {
-        const requiredStake = (amount * 10n) / 100n;
         writeContract({
             address: CONTRACT_ADDRESS,
             abi: FreelanceEscrowABI.abi,
             functionName: 'acceptJob',
             args: [BigInt(jobId)],
-            value: token === '0x0000000000000000000000000000000000000000' ? requiredStake : 0n,
         });
     };
 
@@ -359,6 +382,11 @@ const JobCard = React.memo(({ jobId, categoryFilter, searchQuery, minBudget, sta
                 <div className={`badge ${status === 3 ? 'badge-warning' : 'badge-info'}`} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     {status === 0 && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" />}
                     {statusLabels[status]}
+                    {status === 0 && metadata?.applicants?.length > 0 && (
+                        <span style={{ marginLeft: '4px', opacity: 0.6, fontSize: '0.6rem' }}>
+                            ({metadata.applicants.length} Applicants)
+                        </span>
+                    )}
                 </div>
                 <div style={{ textAlign: 'right' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', marginBottom: '4px' }}>
@@ -433,13 +461,45 @@ const JobCard = React.memo(({ jobId, categoryFilter, searchQuery, minBudget, sta
             </div>
 
             <div style={{ display: 'flex', gap: '12px' }}>
-                {!isClient && !isFreelancer && status === 0 && (
-                    <button onClick={handleAccept} className="btn-primary" style={{ width: '100%' }} disabled={isPending || isConfirming}>
-                        Pick Gig
+                {!isClient && !isFreelancer && status === 0 && !metadata?.applicants?.some(a => a.address === address?.toLowerCase()) && (
+                    <button onClick={handleApply} className="btn-primary" style={{ width: '100%' }} disabled={isPending || isConfirming}>
+                        Apply to Gig
                     </button>
                 )}
 
-                {isFreelancer && (status === 1 || status === 2) && (
+                {isClient && status === 0 && metadata?.applicants?.length > 0 && (
+                    <div style={{ width: '100%', marginTop: '10px' }}>
+                        <div className="text-[10px] uppercase font-black tracking-widest mb-3 opacity-50">Direct Applicants</div>
+                        <div className="space-y-3">
+                            {metadata.applicants.map((app, idx) => (
+                                <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
+                                    <UserLink address={app.address} style={{ fontSize: '0.8rem' }} />
+                                    <button
+                                        onClick={() => handlePick(app.address)}
+                                        className="btn-primary !px-4 !py-2 !text-[10px] !rounded-lg"
+                                        disabled={isPending || isConfirming}
+                                    >
+                                        Pick
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {isFreelancer && status === 1 && (
+                    <button onClick={handleAccept} className="btn-primary" style={{ width: '100%', background: 'var(--accent)' }} disabled={isPending || isConfirming}>
+                        Accept & Start
+                    </button>
+                )}
+
+                {isFreelancer && status === 1 && (
+                    <button onClick={handleAccept} className="btn-primary" style={{ width: '100%', background: 'var(--accent)' }} disabled={isPending || isConfirming}>
+                        Accept & Start
+                    </button>
+                )}
+
+                {isFreelancer && status === 2 && (
                     <button onClick={handleSubmit} className="btn-primary" style={{ width: '100%' }} disabled={isPending || isConfirming}>
                         Deliver Work
                     </button>
@@ -451,7 +511,7 @@ const JobCard = React.memo(({ jobId, categoryFilter, searchQuery, minBudget, sta
                     </button>
                 )}
 
-                {status === 4 && (
+                {status === 5 && (
                     <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: 'var(--accent)', fontWeight: '700' }}>
                         <CheckCircle size={20} /> Project Completed
                     </div>

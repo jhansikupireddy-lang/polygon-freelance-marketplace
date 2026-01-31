@@ -1,16 +1,27 @@
-# PolyLance: Enterprise Decentralized Freelance Marketplace
-**Developed by:** Akhil Muvva
+# PolyLance Zenith: The Supreme Decentralized Marketplace
+**Founding Architect:** Akhil Muvva
 
-PolyLance is a high-performance, professional freelance ecosystem built on the Polygon network. It enables secured escrow payments, milestone-based job tracking, on-chain reputation systems, and NFT-based proof-of-work, ensuring a trustless and efficient marketplace for freelancers and clients alike.
+PolyLance Zenith is a state-of-the-art, professional freelance ecosystem achieving the "Supreme Level" of decentralization on Polygon. It integrates advanced governance, AI-agentic autonomy, and social-layer connectivity to create the world's most robust freelance coordination engine.
 
-## Features
-- **Secure escrow payments with milestones**: Funds are locked in smart contracts and released only when work is approved.
-- **On-chain reputation system**: Verified reviews and ratings stored directly on the blockchain.
-- **NFT-based proof-of-work**: A unique NFT is minted for every completed job, serving as a permanent record of achievement.
-- **Real-time messaging via XMTP**: Secure wallet-to-wallet chat powered by XMTP.
-- **Multi-token support (MATIC, USDC, DAI)**: Pay in MATIC, USDC, or DAI.
-- **Dispute resolution**: Integrated arbitration system for fair conflict resolution.
-- **Advanced job filtering**: Filter jobs by category, budget, and search queries.
+## 🏛️ Zenith Governance Engine
+The protocol features a high-fidelity governance system with support for:
+- **Quadratic Voting**: Dampening the influence of whales to ensure community-driven decisions.
+- **Conviction Voting**: Continuous signaling that accrues power over time for long-term initiatives.
+- **ZK-Anonymity**: Zero-Knowledge identity masking for privacy-preserving voting.
+- **Secret Voting**: Commit-reveal schemes to prevent voter coercion and front-running.
+- **Optimistic Governance**: Streamlined execution for non-contentious protocol upgrades.
+- **Liquid Democracy**: Dynamic delegation of reputation weight to subject-matter experts.
+
+## 🤖 AI & Social Integration
+- **AI-Agent Voters**: Authorized AI agents with model-hash verification for autonomous proposal analysis.
+- **Farcaster Frame Sharing**: Viral governance allows any proposal to be cast as an interactive Frame on Warpcast.
+- **Kleros Justice**: Fully decentralized arbitration court for resolving marketplace disputes.
+- **Push Notifications**: Real-time Zenith alerts for job matches and DAO activities.
+
+## 🛡️ Best-in-Class Features
+- **Supreme Reputation (SBT)**: Soulbound tokens for permanent, non-transferable professional track records.
+- **Milestone-Based Escrow**: Trustless fund release based on verifiable work submissions.
+- **Institutional Branding**: The Zenith "Supreme Shield" identity system.
 
 ## Tech Stack
 - **Frontend**: React + Vite + Tailwind CSS + Wagmi + RainbowKit
@@ -19,14 +30,21 @@ PolyLance is a high-performance, professional freelance ecosystem built on the P
 - **Messaging**: XMTP
 - **Indexing**: Custom event syncer
 
-## Screenshots / Demo
-| Dashboard | Job Market |
+## 🖼️ Protocl Vision
+| Zenith Dashboard | Supreme Logo |
 |-----------|------------|
-| ![Dashboard](assets/dashboard.png) | ![Job Market](assets/job-market.png) |
+| ![Dashboard](assets/dashboard.png) | ![Zenith Shield](frontend/src/assets/logo.png) |
 
 [Add live demo link if deployed]
 
-## Quick Start
+### 🛡️ Zenith Security Shield (Production Hardened)
+- **DoS Resilience**: Implemented `MAX_APPLICATIONS_PER_JOB` and gas-efficient "pull-based" settlements to prevent blockchain-level exhaustion attacks.
+- **Sybil Resistance**: Reputation-gated governance and job applications ensure that only verified, value-adding participants can influence the network.
+- **XSS & Injection Protection**: Backend-level input sanitization (Helmet, Express-Validator) and Frontend HTML escaping to prevent site-scripting and injection vectors.
+- **DDoS Mitigation**: Smart rate-limiting on all AI and storage endpoints.
+- **ZK Privacy**: On-chain Zero-Knowledge proofs for anonymous governance, protecting voter sovereignty.
+
+## 🚀 Getting Started
 
 ### Prerequisites
 - Node.js v18+

@@ -94,7 +94,18 @@ function CreateJob({ onJobCreated, gasless }) {
             try {
                 const txHash = await createJobGasless(smartAccount, CONTRACT_ADDRESS, FreelanceEscrowABI.abi, params);
                 // Trigger the same success logic as Wagmi
-                api.saveJobMetadata({ jobId: Number(jobCount) + 1, title, description, category })
+                api.saveJobMetadata({
+                    jobId: Number(jobCount) + 1,
+                    title,
+                    description,
+                    category,
+                    ipfsHash,
+                    milestones: milestones.filter(m => m.amount).map(m => ({
+                        amount: m.amount,
+                        description: m.description,
+                        isReleased: false
+                    }))
+                })
                     .then(() => onJobCreated()).catch(err => { console.error(err); onJobCreated(); });
                 return;
             } catch (err) {
@@ -113,7 +124,18 @@ function CreateJob({ onJobCreated, gasless }) {
 
     React.useEffect(() => {
         if (isSuccess && jobCount !== undefined) {
-            api.saveJobMetadata({ jobId: Number(jobCount), title, description, category })
+            api.saveJobMetadata({
+                jobId: Number(jobCount),
+                title,
+                description,
+                category,
+                ipfsHash: params.ipfsHash, // Use the hash from params
+                milestones: milestones.filter(m => m.amount).map(m => ({
+                    amount: m.amount,
+                    description: m.description,
+                    isReleased: false
+                }))
+            })
                 .then(() => onJobCreated()).catch(err => { console.error(err); onJobCreated(); });
         }
     }, [isSuccess, jobCount]);
