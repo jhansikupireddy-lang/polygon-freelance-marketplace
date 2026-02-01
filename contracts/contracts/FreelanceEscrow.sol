@@ -312,16 +312,7 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
         job.totalPaidOut += payout;
 
         // Mint SBTs
-        _safeMint(job.freelancer, jobId);
-        
-        if (sbtContract != address(0)) {
-            try IFreelanceSBT(sbtContract).mintContribution(job.freelancer, job.categoryId, rating, jobId, job.client) {}
-            catch {
-                // Fallback to safeMint for FreelanceSBT if mintContribution fails/missing
-                (bool s, ) = sbtContract.call(abi.encodeWithSignature("safeMint(address,string)", job.freelancer, job.ipfsHash));
-                (s);
-            }
-        }
+        _mintSBT(job.freelancer, jobId);
 
         if (completionCertContract != address(0)) {
             IFreelanceSBT(completionCertContract).mintContribution(job.freelancer, job.categoryId, rating, jobId, job.client);
@@ -387,17 +378,34 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
     }
 
     /**
+     * @notice Submit evidence for a disputed job.
+     */
+    function submitEvidence(uint256 jobId, string calldata evidenceHash) external {
+        Job storage job = jobs[jobId];
+        if (_msgSender() != job.client && _msgSender() != job.freelancer) revert NotAuthorized();
+        if (job.status != JobStatus.Disputed) revert InvalidStatus();
+
+        emit Evidence(IArbitrator(arbitrator), jobId, _msgSender(), evidenceHash);
+    }
+
+    /**
      * @notice Decentralized Dispute Integration.
      */
     function raiseDispute(uint256 jobId) public payable whenNotPaused nonReentrant {
         Job storage job = jobs[jobId];
         if (_msgSender() != job.client && _msgSender() != job.freelancer) revert NotAuthorized();
+        if (job.status != JobStatus.Created && job.status != JobStatus.Accepted && job.status != JobStatus.Ongoing) revert InvalidStatus();
+        
         job.status = JobStatus.Disputed;
 
-        if (arbitrator != address(0)) {
+        if (arbitrator != address(0) && arbitrator != address(this)) {
             uint256 cost = IArbitrator(arbitrator).arbitrationCost("");
-            uint256 dId = IArbitrator(arbitrator).createDispute{value: cost}(2, "");
+            uint256 dId = IArbitrator(arbitrator).createDispute{value: msg.value}(2, "");
             disputeIdToJobId[dId] = jobId;
+            emit Dispute(IArbitrator(arbitrator), dId, jobId, jobId);
+        } else {
+            // Internal arbitration or manual mode
+            emit DisputeRaised(jobId, jobId);
         }
     }
 
@@ -409,25 +417,38 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
         if (_msgSender() != arbitrator) revert NotAuthorized();
         uint256 jobId = disputeIdToJobId[dId];
         Job storage job = jobs[jobId];
+        if (job.status != JobStatus.Disputed) revert InvalidStatus();
 
         uint256 payout = job.amount - job.totalPaidOut;
+        uint256 stake = job.freelancerStake;
         
-        // Effects: Update state BEFORE external calls
-        job.totalPaidOut += payout;
+        job.paid = true;
         
-        if (ruling == 1) { // Client
+        if (ruling == 1) { // Refuse to Rule / Split 50-50
             job.status = JobStatus.Cancelled;
-            // Return remaining budget + freelancer stake (as penalty/refund) to client? 
-            // Usually, client gets budget, freelancer gets stake back unless malicious.
-            // Let's stick to returning stake to the original owner (freelancer) but budget to client.
-            _sendFunds(job.client, job.token, payout);
-            _sendFunds(job.freelancer, job.token, job.freelancerStake);
-        } else { // Freelancer
+            _sendFunds(job.client, job.token, payout / 2);
+            _sendFunds(job.freelancer, job.token, (payout / 2) + stake);
+        } else if (ruling == 2) { // Client Wins
+            job.status = JobStatus.Cancelled;
+            _sendFunds(job.client, job.token, payout + stake); // Client gets stake as penalty
+        } else if (ruling == 3) { // Freelancer Wins
             job.status = JobStatus.Completed;
-            _safeMint(job.freelancer, jobId);
-            _sendFunds(job.freelancer, job.token, payout + job.freelancerStake);
+            job.totalPaidOut += payout;
+            _sendFunds(job.freelancer, job.token, payout + stake);
+            _mintSBT(job.freelancer, jobId);
         }
+        
         emit Ruling(IArbitrator(arbitrator), dId, ruling);
+    }
+
+    function _mintSBT(address to, uint256 jobId) internal {
+        if (sbtContract != address(0)) {
+            Job storage job = jobs[jobId];
+            try IFreelanceSBT(sbtContract).mintContribution(to, job.categoryId, 5, jobId, job.client) {} catch {
+                (bool s, ) = sbtContract.call(abi.encodeWithSignature("safeMint(address,string)", to, job.ipfsHash));
+                (s);
+            }
+        }
     }
 
     function resolveDisputeManual(uint256 jobId, uint256 freelancerBps) external onlyRole(DEFAULT_ADMIN_ROLE) nonReentrant {

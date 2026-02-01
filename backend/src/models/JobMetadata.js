@@ -20,7 +20,19 @@ const jobMetadataSchema = new mongoose.Schema({
         address: { type: String, lowercase: true },
         stake: String,
         timestamp: { type: Date, default: Date.now }
-    }]
+    }],
+    evidence: [{
+        party: { type: String, lowercase: true },
+        hash: String,
+        timestamp: { type: Date, default: Date.now }
+    }],
+    disputeData: {
+        arbitrator: String,
+        disputeId: Number,
+        aiVerdict: String,
+        aiSplit: Number,
+        reasoning: String
+    }
 }, { timestamps: true });
 
 export const JobMetadata = mongoose.model('JobMetadata', jobMetadataSchema);

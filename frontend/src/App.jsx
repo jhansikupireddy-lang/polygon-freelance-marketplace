@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import logo from './assets/logo.png';
-import { Briefcase, PlusCircle, LayoutDashboard, Ticket, MessageSquare, Trophy, User, Gavel } from 'lucide-react';
+import { Briefcase, PlusCircle, LayoutDashboard, Ticket, MessageSquare, Trophy, User, Gavel, Cpu } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Dashboard from './components/Dashboard';
 import CreateJob from './components/CreateJob';
@@ -13,6 +13,7 @@ import Portfolio from './components/Portfolio';
 import DaoDashboard from './components/DaoDashboard';
 import TermsOfService from './components/TermsOfService';
 import PrivacyPolicy from './components/PrivacyPolicy';
+import ArbitrationDashboard from './components/ArbitrationDashboard';
 import { NotificationManager } from './components/NotificationManager';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -43,6 +44,7 @@ function App() {
       case 'chat': return <Chat peerAddress={chatPeerAddress} />;
       case 'leaderboard': return <Leaderboard onUserClick={setPortfolioAddress} />;
       case 'governance': return <DaoDashboard />;
+      case 'justice': return <ArbitrationDashboard />;
       case 'terms': return <TermsOfService />;
       case 'privacy': return <PrivacyPolicy />;
       default: return <Dashboard />;
@@ -86,7 +88,10 @@ function App() {
             <Trophy size={20} /> Hall of Fame
           </button>
           <button className={`nav-item ${activeTab === 'governance' ? 'active' : ''}`} onClick={() => setActiveTab('governance')}>
-            <Gavel size={20} /> Governance
+            <Cpu size={20} /> Governance
+          </button>
+          <button className={`nav-item ${activeTab === 'justice' ? 'active' : ''}`} onClick={() => setActiveTab('justice')}>
+            <Gavel size={20} /> Justice
           </button>
           <button className={`nav-item ${activeTab === 'nfts' ? 'active' : ''}`} onClick={() => setActiveTab('nfts')}>
             <Ticket size={20} /> Legacy Vault

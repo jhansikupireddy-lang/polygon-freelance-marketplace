@@ -382,6 +382,28 @@ const JobCard = React.memo(({ jobId, categoryFilter, searchQuery, minBudget, sta
         });
     };
 
+    const handleDispute = () => {
+        if (!window.confirm("Are you sure you want to raise an official dispute? This will involve protocol arbitrators.")) return;
+        writeContract({
+            address: CONTRACT_ADDRESS,
+            abi: FreelanceEscrowABI.abi,
+            functionName: 'raiseDispute',
+            args: [BigInt(jobId)],
+        });
+    };
+
+    const handleEvidence = async () => {
+        const text = prompt('Enter evidence description or IPFS link:');
+        if (!text) return;
+
+        writeContract({
+            address: CONTRACT_ADDRESS,
+            abi: FreelanceEscrowABI.abi,
+            functionName: 'submitEvidence',
+            args: [BigInt(jobId), text],
+        });
+    };
+
     return (
         <div ref={cardRef} className="glass-card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
@@ -514,6 +536,18 @@ const JobCard = React.memo(({ jobId, categoryFilter, searchQuery, minBudget, sta
                 {isClient && status === 2 && (
                     <button onClick={handleRelease} className="btn-primary" style={{ width: '100%', background: 'var(--accent)' }} disabled={isPending || isConfirming}>
                         Approve & Pay
+                    </button>
+                )}
+
+                {(isClient || isFreelancer) && (status === 1 || status === 2) && (
+                    <button onClick={handleDispute} className="btn-ghost" style={{ width: '100%', borderColor: 'rgba(239, 68, 68, 0.2)', color: 'var(--danger)' }} disabled={isPending || isConfirming}>
+                        Raise Dispute
+                    </button>
+                )}
+
+                {(isClient || isFreelancer) && status === 3 && (
+                    <button onClick={handleEvidence} className="btn-primary" style={{ width: '100%', background: 'var(--primary)' }} disabled={isPending || isConfirming}>
+                        Submit Evidence
                     </button>
                 )}
 

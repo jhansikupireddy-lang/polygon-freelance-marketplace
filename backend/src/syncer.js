@@ -110,50 +110,55 @@ export async function startSyncer() {
         }
     });
 
-    // Watch for JobDisputed
+    // Watch for Dispute (Standard IArbitrable)
     client.watchEvent({
         address: CONTRACT_ADDRESS,
-        event: parseAbiItem('event JobDisputed(uint256 indexed jobId)'),
+        event: parseAbiItem('event Dispute(address indexed _arbitrator, uint256 indexed _disputeID, uint256 _metaEvidenceID, uint256 _evidenceID)'),
         onLogs: async (logs) => {
             for (const log of logs) {
                 try {
-                    const { jobId } = log.args;
-                    console.log(`Dispute Signal: Job ${jobId} enters dispute phase.`);
+                    const { _arbitrator, _disputeID, _metaEvidenceID } = log.args;
+                    console.log(`Dispute Created: Arb ${_arbitrator}, ID ${_disputeID}, Meta ${_metaEvidenceID}`);
 
-                    const job = await client.readContract({
-                        address: CONTRACT_ADDRESS,
-                        abi: abi,
-                        functionName: 'jobs',
-                        args: [jobId]
-                    });
-                    const freelancer = job[2];
-                    const clientAddress = job[1];
-
-                    const profile = await Profile.findOne({ address: freelancer.toLowerCase() });
-                    if (profile) {
-                        profile.disputedJobs += 1;
-
-                        const avgRating = profile.ratingCount > 0 ? profile.ratingSum / profile.ratingCount : 0;
-                        const disputeRate = profile.completedJobs > 0 ? profile.disputedJobs / profile.completedJobs : 0;
-                        const score = (profile.totalEarned) * (avgRating / 5) * (Math.max(0, 1 - disputeRate));
-                        profile.reputationScore = Math.floor(score * 10);
-
-                        await profile.save();
-                        console.log(`Updated reputation for ${freelancer} (Dispute)`);
-
-                        await sendNotification(
-                            freelancer,
-                            "Dispute Opened ⚖️",
-                            `A dispute has been initiated for Job #${jobId}. Please check the platform for details.`
-                        );
-                        await sendNotification(
-                            clientAddress,
-                            "Dispute Opened ⚖️",
-                            `An official dispute has been recorded for Job #${jobId}.`
-                        );
-                    }
+                    await JobMetadata.findOneAndUpdate(
+                        { jobId: Number(_metaEvidenceID) },
+                        {
+                            status: 3, // Disputed
+                            "disputeData.arbitrator": _arbitrator,
+                            "disputeData.disputeId": Number(_disputeID)
+                        }
+                    );
                 } catch (error) {
-                    console.error('Error handling JobDisputed:', error);
+                    console.error('Error handling Dispute:', error);
+                }
+            }
+        }
+    });
+
+    // Watch for Evidence (Standard IArbitrable)
+    client.watchEvent({
+        address: CONTRACT_ADDRESS,
+        event: parseAbiItem('event Evidence(address indexed _arbitrator, uint256 indexed _evidenceID, address indexed _party, string _evidence)'),
+        onLogs: async (logs) => {
+            for (const log of logs) {
+                try {
+                    const { _evidenceID, _party, _evidence } = log.args;
+                    console.log(`Evidence Submitted: Job ${_evidenceID} by ${_party}`);
+
+                    await JobMetadata.findOneAndUpdate(
+                        { jobId: Number(_evidenceID) },
+                        {
+                            $push: {
+                                evidence: {
+                                    party: _party.toLowerCase(),
+                                    hash: _evidence,
+                                    timestamp: new Date()
+                                }
+                            }
+                        }
+                    );
+                } catch (error) {
+                    console.error('Error handling Evidence:', error);
                 }
             }
         }

@@ -48,4 +48,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
     }).then(handleResponse),
+
+    getDisputes: () => fetch(`${API_URL}/disputes`).then(handleResponse),
+    analyzeDispute: (jobId) => fetch(`${API_URL}/disputes/${jobId}/analyze`, { method: 'POST' }).then(handleResponse),
 };

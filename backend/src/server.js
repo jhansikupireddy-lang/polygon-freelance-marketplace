@@ -189,6 +189,15 @@ app.post('/api/profiles',
         }
     });
 
+app.get('/api/disputes', async (req, res) => {
+    try {
+        const disputes = await JobMetadata.find({ status: 3 }).sort({ updatedAt: -1 });
+        res.json(disputes);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Job Metadata Routes
 app.get('/api/jobs', async (req, res) => {
     try {
@@ -390,6 +399,28 @@ app.get('/api/match/:jobId/:address', async (req, res) => {
         const { calculateMatchScore } = await import('./aiMatcher.js');
         const matchData = await calculateMatchScore(job.description, profile);
         res.json(matchData);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/disputes/:jobId/analyze', async (req, res) => {
+    const { jobId } = req.params;
+    try {
+        const job = await JobMetadata.findOne({ jobId: parseInt(jobId) });
+        if (!job) return res.status(404).json({ error: 'Job not found' });
+
+        const { analyzeDispute } = await import('./aiMatcher.js');
+        // In a real app, we'd fetch actual chat logs and work metadata
+        const analysis = await analyzeDispute(job, [], job.evidence || []);
+
+        if (!job.disputeData) job.disputeData = {};
+        job.disputeData.aiVerdict = analysis.verdict;
+        job.disputeData.aiSplit = analysis.suggestedSplit;
+        job.disputeData.reasoning = analysis.reasoning;
+        await job.save();
+
+        res.json(job.disputeData);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
