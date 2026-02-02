@@ -186,7 +186,7 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
         // but traditionally we just wait for client to release funds.
     }
 
-    function claimRefund(address token) external nonReentrant {
+    function claimRefund(address token) external whenNotPaused nonReentrant {
         uint256 amt = pendingRefunds[_msgSender()][token];
         if (amt == 0) revert InvalidStatus();
         pendingRefunds[_msgSender()][token] = 0;
@@ -408,7 +408,7 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
     /**
      * @notice Submit evidence for a disputed job.
      */
-    function submitEvidence(uint256 jobId, string calldata evidenceHash) external {
+    function submitEvidence(uint256 jobId, string calldata evidenceHash) external whenNotPaused {
         Job storage job = jobs[jobId];
         if (_msgSender() != job.client && _msgSender() != job.freelancer) revert NotAuthorized();
         if (job.status != JobStatus.Disputed) revert InvalidStatus();
@@ -441,7 +441,7 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
         raiseDispute(jobId);
     }
 
-    function rule(uint256 dId, uint256 ruling) external override nonReentrant {
+    function rule(uint256 dId, uint256 ruling) external override whenNotPaused nonReentrant {
         if (_msgSender() != arbitrator) revert NotAuthorized();
         uint256 jobId = disputeIdToJobId[dId];
         Job storage job = jobs[jobId];
@@ -479,7 +479,7 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
         }
     }
 
-    function resolveDisputeManual(uint256 jobId, uint256 freelancerBps) external onlyRole(DEFAULT_ADMIN_ROLE) nonReentrant {
+    function resolveDisputeManual(uint256 jobId, uint256 freelancerBps) external onlyRole(DEFAULT_ADMIN_ROLE) whenNotPaused nonReentrant {
         Job storage job = jobs[jobId];
         if (job.status != JobStatus.Disputed) revert InvalidStatus();
         
