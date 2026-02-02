@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 import "./FreelancerReputation.sol";
 
 /**
@@ -13,7 +14,7 @@ import "./FreelancerReputation.sol";
  * @notice Continuous Settlement Escrow for real-time payments on high-performance chains.
  * Funds flow from employer to freelancer based on elapsed time.
  */
-contract StreamingEscrow is ReentrancyGuard, AccessControl {
+contract StreamingEscrow is ReentrancyGuard, AccessControl, Pausable {
     using SafeERC20 for IERC20;
 
     bytes32 public constant ARBITRATOR_ROLE = keccak256("ARBITRATOR_ROLE");
@@ -77,6 +78,14 @@ contract StreamingEscrow is ReentrancyGuard, AccessControl {
         emit FeeCollectorUpdated(_feeCollector);
     }
 
+    function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _pause();
+    }
+
+    function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _unpause();
+    }
+
     /**
      * @notice Creates a new payment stream.
      */
@@ -86,7 +95,7 @@ contract StreamingEscrow is ReentrancyGuard, AccessControl {
         address tokenAddress,
         uint256 startTime,
         uint256 stopTime
-    ) external nonReentrant returns (uint256) {
+    ) external whenNotPaused nonReentrant returns (uint256) {
         if (recipient == address(0) || tokenAddress == address(0)) revert Unauthorized();
         if (deposit == 0) revert InvalidDeposit();
         if (startTime < block.timestamp) startTime = block.timestamp;
@@ -139,7 +148,7 @@ contract StreamingEscrow is ReentrancyGuard, AccessControl {
     /**
      * @notice Withdraws available funds from the stream.
      */
-    function withdrawFromStream(uint256 streamId, uint256 amount) external nonReentrant {
+    function withdrawFromStream(uint256 streamId, uint256 amount) external whenNotPaused nonReentrant {
         Stream storage stream = streams[streamId];
         if (streamId >= nextStreamId || stream.deposit == 0) revert StreamDoesNotExist();
         if (stream.isPaused || stream.isDisputed) revert StreamPausedOrDisputed();

@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 
 /**
  * @title InsurancePool
@@ -12,7 +13,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  * @notice Collects fees from jobs and provides a safety net for disputes.
  * @dev Manages both Native (MATIC) and ERC20 token balances for insurance payouts.
  */
-contract InsurancePool is Ownable, ReentrancyGuard {
+contract InsurancePool is Ownable, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
     /// @notice Current balance of each token held in the pool
@@ -31,12 +32,20 @@ contract InsurancePool is Ownable, ReentrancyGuard {
         require(initialOwner != address(0), "Zero address");
     }
 
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
     /**
      * @notice Allows the Escrow contract to deposit ERC20 fees
      * @param token Address of the payment token
      * @param amount Amount to deposit
      */
-    function deposit(address token, uint256 amount) external {
+    function deposit(address token, uint256 amount) external whenNotPaused {
         if (token == address(0)) {
             revert("Use depositNative");
         }
@@ -49,7 +58,7 @@ contract InsurancePool is Ownable, ReentrancyGuard {
     /**
      * @notice Allows depositing native MATIC fee
      */
-    function depositNative() external payable {
+    function depositNative() external payable whenNotPaused {
         balances[address(0)] += msg.value;
         totalInsurancePool[address(0)] += msg.value;
         emit FundsAdded(address(0), msg.value);
@@ -61,7 +70,7 @@ contract InsurancePool is Ownable, ReentrancyGuard {
      * @param to Recipient address
      * @param amount Payout amount
      */
-    function payout(address token, address to, uint256 amount) external onlyOwner nonReentrant {
+    function payout(address token, address to, uint256 amount) external onlyOwner whenNotPaused nonReentrant {
         require(to != address(0), "Zero address");
         require(balances[token] >= amount, "Insufficient pool funds");
         balances[token] -= amount;

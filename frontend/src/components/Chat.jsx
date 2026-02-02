@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Client } from '@xmtp/browser-sdk';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useWalletClient } from 'wagmi';
-import { MessageSquare, Send, User, Loader2, FileText, DollarSign, Clock, CheckCircle2, PlusCircle, Video } from 'lucide-react';
+import { MessageSquare, Send, User, Loader2, FileText, DollarSign, Clock, CheckCircle2, PlusCircle, Video, Gavel } from 'lucide-react';
 import UserLink from './UserLink';
 import { hexToBytes } from 'viem';
+import { useArbitration } from '../hooks/useArbitration';
 
 export default function Chat({ initialPeerAddress, onClearedAddress }) {
     const { address } = useAccount();
@@ -269,7 +270,22 @@ function MessageContainer({ conversation, address, contractContext, loadingConte
     const [messages, setMessages] = useState([]);
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
     const messagesEndRef = useRef(null);
+    const { submitChatLogsAsEvidence } = useArbitration();
+
+    const handleExportEvidence = async () => {
+        if (!contractContext || messages.length === 0) return;
+        setIsExporting(true);
+        try {
+            const role = address.toLowerCase() === contractContext.client.toLowerCase() ? 'client' : 'freelancer';
+            await submitChatLogsAsEvidence(contractContext.jobId, messages, role);
+        } catch (err) {
+            console.error('[ARBITRATION] Export failed:', err);
+        } finally {
+            setIsExporting(false);
+        }
+    };
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -414,6 +430,29 @@ function MessageContainer({ conversation, address, contractContext, loadingConte
                                 <span style={{ color: getStatusColor(contractContext.status), fontWeight: '700' }}>{contractContext.status}</span>
                             </div>
                         </div>
+
+                        {contractContext.status === 'Disputed' && (
+                            <button
+                                onClick={handleExportEvidence}
+                                disabled={isExporting}
+                                className="btn-ghost"
+                                style={{
+                                    padding: '8px 16px',
+                                    fontSize: '0.7rem',
+                                    background: 'rgba(239, 68, 68, 0.1)',
+                                    color: '#ef4444',
+                                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                                    borderRadius: '12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    fontWeight: '800'
+                                }}
+                            >
+                                {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Gavel size={14} />}
+                                {isExporting ? 'UPLOADING...' : 'SUBMIT CHAT AS EVIDENCE'}
+                            </button>
+                        )}
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto' }}>
                             <div style={{ padding: '8px', borderRadius: '10px', background: 'rgba(245, 158, 11, 0.1)' }}>

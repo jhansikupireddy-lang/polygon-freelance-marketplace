@@ -12,8 +12,10 @@ import {
     LayoutDashboard,
     ArrowUpRight,
     Clock,
-    Shield
+    Shield,
+    Gavel
 } from 'lucide-react';
+import { useArbitration } from '../hooks/useArbitration';
 import FreelanceEscrowABI from '../contracts/FreelanceEscrow.json';
 import { CONTRACT_ADDRESS } from '../constants';
 import { api } from '../services/api';
@@ -35,6 +37,7 @@ const ManagerDashboard = () => {
     const [loading, setLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState('All');
     const [searchTerm, setSearchTerm] = useState('');
+    const { raiseDispute } = useArbitration();
 
     const { data: jobCount } = useReadContract({
         address: CONTRACT_ADDRESS,
@@ -210,9 +213,20 @@ const ManagerDashboard = () => {
                                             </div>
                                         </td>
                                         <td className="p-6">
-                                            <button className="p-2 rounded-lg bg-white/5 hover:bg-primary/20 text-white transition-all">
-                                                <ArrowUpRight size={16} />
-                                            </button>
+                                            <div className="flex items-center gap-2">
+                                                {job.status >= 1 && job.status <= 2 && (
+                                                    <button
+                                                        onClick={() => raiseDispute(job.id)}
+                                                        title="Raise Dispute"
+                                                        className="p-2 rounded-lg bg-white/5 hover:bg-rose-500/20 text-text-dim hover:text-rose-500 transition-all opacity-0 group-hover:opacity-100"
+                                                    >
+                                                        <Gavel size={16} />
+                                                    </button>
+                                                )}
+                                                <button className="p-2 rounded-lg bg-white/5 hover:bg-primary/20 text-white transition-all">
+                                                    <ArrowUpRight size={16} />
+                                                </button>
+                                            </div>
                                         </td>
                                     </motion.tr>
                                 );
