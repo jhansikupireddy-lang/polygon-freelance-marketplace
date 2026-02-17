@@ -10,22 +10,27 @@ import { sendNotification } from './notifications.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Try to load deployment address dynamically
+// Try to load deployment addresses dynamically
 let CONTRACT_ADDRESS = '0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9';
+let CROSS_CHAIN_MANAGER_ADDRESS = '0x5C4aF960570bFc0861198A699435b54FC9012345';
+
 try {
     const deployPath = path.join(__dirname, '../../contracts/scripts/deployment_addresses.json');
     if (fs.existsSync(deployPath)) {
         const deployData = JSON.parse(fs.readFileSync(deployPath, 'utf8'));
         CONTRACT_ADDRESS = deployData.FreelanceEscrow;
+        CROSS_CHAIN_MANAGER_ADDRESS = deployData.CrossChainEscrowManager || CROSS_CHAIN_MANAGER_ADDRESS;
     }
 } catch (err) {
-    console.warn('Could not load dynamic contract address, using default:', CONTRACT_ADDRESS);
+    console.warn('Could not load dynamic contract addresses, using defaults');
 }
 
-// Load ABI
+// Load ABIs
 const abiPath = path.join(__dirname, 'contracts', 'FreelanceEscrow.json');
-const contractData = JSON.parse(fs.readFileSync(abiPath, 'utf8'));
-const abi = contractData.abi;
+const crossChainAbiPath = path.join(__dirname, 'contracts', 'CrossChainEscrowManager.json');
+
+const abi = JSON.parse(fs.readFileSync(abiPath, 'utf8')).abi;
+const crossChainAbi = JSON.parse(fs.readFileSync(crossChainAbiPath, 'utf8')).abi;
 
 const client = createPublicClient({
     chain: localhost,
@@ -322,5 +327,55 @@ export async function startSyncer() {
         }
     });
 
-    console.log(`Watching events for contract at ${CONTRACT_ADDRESS}`);
+    // --- Cross-Chain Escrow Manager Listeners ---
+
+    // Watch for CrossChainJobCreated
+    client.watchEvent({
+        address: CROSS_CHAIN_MANAGER_ADDRESS,
+        event: parseAbiItem('event CrossChainJobCreated(uint256 indexed localJobId, uint64 indexed destinationChain, address indexed client, uint256 amount, bytes32 messageId)'),
+        onLogs: async (logs) => {
+            for (const log of logs) {
+                try {
+                    const { localJobId, destinationChain, client: clientAddr, amount } = log.args;
+                    console.log(`[CCIP] New Cross-Chain Job: ID ${localJobId}, Dest Chain ${destinationChain}`);
+
+                    await JobMetadata.create({
+                        jobId: Number(localJobId),
+                        title: `Cross-Chain Job #${localJobId}`,
+                        description: 'CCIP synchronization in progress...',
+                        category: 'Cross-Chain',
+                        status: 0,
+                        isCrossChain: true,
+                        destinationChain: destinationChain.toString(),
+                        sourceChain: '137' // Assuming fixed source for now
+                    });
+                } catch (error) {
+                    console.error('Error syncing cross-chain job:', error);
+                }
+            }
+        }
+    });
+
+    // Watch for CrossChainDisputeInitiated
+    client.watchEvent({
+        address: CROSS_CHAIN_MANAGER_ADDRESS,
+        event: parseAbiItem('event CrossChainDisputeInitiated(uint256 indexed localJobId, bytes32 messageId)'),
+        onLogs: async (logs) => {
+            for (const log of logs) {
+                try {
+                    const { localJobId } = log.args;
+                    console.log(`[CCIP] Cross-Chain Dispute Initiated: ID ${localJobId}`);
+
+                    await JobMetadata.findOneAndUpdate(
+                        { jobId: Number(localJobId) },
+                        { status: 3 } // Disputed
+                    );
+                } catch (error) {
+                    console.error('Error handling cross-chain dispute:', error);
+                }
+            }
+        }
+    });
+
+    console.log(`Watching events for contracts at:\n- Escrow: ${CONTRACT_ADDRESS}\n- CCIP Manager: ${CROSS_CHAIN_MANAGER_ADDRESS}`);
 }

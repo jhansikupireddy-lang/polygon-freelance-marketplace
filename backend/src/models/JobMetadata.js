@@ -32,7 +32,10 @@ const jobMetadataSchema = new mongoose.Schema({
         aiVerdict: String,
         aiSplit: Number,
         reasoning: String
-    }
+    },
+    isCrossChain: { type: Boolean, default: false },
+    sourceChain: String,
+    destinationChain: String
 }, { timestamps: true });
 
 export const JobMetadata = mongoose.model('JobMetadata', jobMetadataSchema);

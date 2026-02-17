@@ -8,6 +8,10 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 
+interface IFreelanceEscrow {
+    function resolveDisputeManual(uint256 _jobId, uint256 _bps) external;
+}
+
 /**
  * @title CrossChainEscrowManager
  * @notice Manages job escrows across multiple chains using Chainlink CCIP
@@ -66,6 +70,9 @@ contract CrossChainEscrowManager is CCIPReceiver, AccessControl, ReentrancyGuard
     
     // Chain selector => is supported
     mapping(uint64 => bool) public supportedChains;
+
+    /// @notice Associated FreelanceEscrow contract for local enforcement
+    address public freelanceEscrow;
     
     // User => chain => job IDs
     mapping(address => mapping(uint64 => uint256[])) public userJobsByChain;
@@ -392,6 +399,8 @@ contract CrossChainEscrowManager is CCIPReceiver, AccessControl, ReentrancyGuard
             _handleCancelJob(message);
         } else if (msgType == MessageType.INITIATE_DISPUTE) {
             _handleInitiateDispute(message);
+        } else if (msgType == MessageType.RESOLVE_DISPUTE) {
+            _handleResolveDispute(message);
         }
 
         emit MessageReceived(messageId, message.sourceChainSelector, msgType);
@@ -477,6 +486,63 @@ contract CrossChainEscrowManager is CCIPReceiver, AccessControl, ReentrancyGuard
     }
 
     /**
+     * @notice Resolve a cross-chain dispute (Arbitrator action)
+     * @param localJobId The local job ID
+     * @param ruling The ruling (1: Split, 2: Client wins, 3: Freelancer wins)
+     */
+    function resolveCrossChainDispute(
+        uint256 localJobId,
+        uint256 ruling
+    ) external payable onlyRole(MANAGER_ROLE) whenNotPaused nonReentrant returns (bytes32 messageId) {
+        CrossChainJob storage job = crossChainJobs[localJobId];
+        if (job.localJobId == 0) revert JobNotFound(localJobId);
+        if (job.status != JobStatus.Disputed) revert InvalidStatus(job.status, JobStatus.Disputed);
+
+        // Execute ruling locally if we are the destination chain holding the "funds" 
+        // Or relay it if we are the arbiter chain.
+        // For simplicity, we assume this manager triggers the enforcement.
+        
+        job.status = (ruling == 3) ? JobStatus.Completed : JobStatus.Cancelled;
+
+        bytes memory data = abi.encode(
+            MessageType.RESOLVE_DISPUTE,
+            localJobId,
+            job.remoteJobId,
+            ruling
+        );
+
+        // Relay to both chains or the counterpart?
+        // Usually, the message goes to the chain where the funds/job state needs to be updated.
+        uint64 targetChain = (job.sourceChain == uint64(block.chainid)) ? job.destinationChain : job.sourceChain;
+        
+        messageId = _sendMessage(targetChain, data);
+        job.lastMessageId = messageId;
+
+        return messageId;
+    }
+
+    function _handleResolveDispute(Client.Any2EVMMessage calldata message) internal {
+        (
+            ,
+            uint256 localJobId,
+            uint256 remoteJobId,
+            uint256 ruling
+        ) = abi.decode(message.data, (MessageType, uint256, uint256, uint256));
+
+        CrossChainJob storage job = crossChainJobs[localJobId];
+        if (job.localJobId != 0) {
+            job.status = (ruling == 1) ? JobStatus.Cancelled : JobStatus.Completed;
+            
+            // Trigger local escrow resolution if configured
+            if (freelanceEscrow != address(0)) {
+                // Ruling mapping: 1: Client (0% bps), 2: Freelancer (100% bps), 3: Split (50% bps)
+                uint256 bps = (ruling == 2) ? 10000 : (ruling == 1) ? 0 : 5000;
+                IFreelanceEscrow(freelanceEscrow).resolveDisputeManual(localJobId, bps);
+            }
+        }
+    }
+
+    /**
      * @notice Estimate fee for cross-chain message
      */
     function estimateMessageFee(
@@ -523,6 +589,10 @@ contract CrossChainEscrowManager is CCIPReceiver, AccessControl, ReentrancyGuard
         bool supported
     ) external onlyRole(MANAGER_ROLE) {
         supportedChains[chainSelector] = supported;
+    }
+
+    function setFreelanceEscrow(address _escrow) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        freelanceEscrow = _escrow;
     }
 
     function pause() external onlyRole(PAUSER_ROLE) {

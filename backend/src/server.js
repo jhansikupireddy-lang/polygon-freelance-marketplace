@@ -2,7 +2,8 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { verifyMessage } from 'viem';
+import { verifyMessage, createPublicClient, http } from 'viem';
+import { polygonAmoy } from 'viem/chains';
 import { startSyncer } from './syncer.js';
 import crypto from 'crypto';
 import Stripe from 'stripe';
@@ -19,6 +20,7 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import hpp from 'hpp';
 import { body, validationResult } from 'express-validator';
+import { GDPRService } from './services/gdpr.js';
 
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -43,7 +45,7 @@ app.use(helmet({
 }));
 app.use(hpp()); // Prevent HTTP Parameter Pollution
 app.use(cors({
-    origin: process.env.FRONTEND_URL || ['https://localhost:5173', 'https://localhost:5174', 'http://localhost:5173', 'http://localhost:5174'],
+    origin: process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : ['https://localhost:5173', 'https://localhost:5174', 'http://localhost:5173', 'http://localhost:5174'],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
@@ -80,12 +82,25 @@ app.post('/api/auth/verify', async (req, res) => {
     console.log('[AUTH] Verify called');
     try {
         const siweMessage = new SiweMessage(message);
-        const { data: fields, error } = await siweMessage.verify({ signature });
 
-        if (error) {
-            console.warn('[AUTH] SIWE verification error:', error);
+        // Use a public client to support EIP-1271 (Smart Accounts)
+        const publicClient = createPublicClient({
+            chain: polygonAmoy,
+            transport: http('https://rpc-amoy.polygon.technology')
+        });
+
+        const isValid = await publicClient.verifyMessage({
+            address: siweMessage.address,
+            message: siweMessage.prepareMessage(),
+            signature,
+        });
+
+        if (!isValid) {
+            console.warn('[AUTH] Signature verification failed');
             return res.status(401).json({ error: 'Signature verification failed' });
         }
+
+        const fields = siweMessage;
 
         // Validate nonce against database
         const profile = await Profile.findOne({
@@ -426,22 +441,91 @@ app.post('/api/disputes/:jobId/analyze', async (req, res) => {
     }
 });
 
+app.get('/api/disputes', async (req, res) => {
+    try {
+        const disputes = await JobMetadata.find({ status: 3 });
+        res.json(disputes);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/disputes/:jobId/resolve', async (req, res) => {
+    const { jobId } = req.params;
+    const { ruling, reasoning } = req.body;
+    try {
+        const job = await JobMetadata.findOne({ jobId: parseInt(jobId) });
+        if (!job) return res.status(404).json({ error: 'Job not found' });
+
+        // Update status based on ruling (1: Client, 2: Freelancer, 3: Split)
+        job.status = (ruling === 1) ? 5 : (ruling === 2) ? 4 : 4; // Simplified mapping
+        if (!job.disputeData) job.disputeData = {};
+        job.disputeData.reasoning = reasoning;
+        await job.save();
+
+        res.json({ ok: true, status: job.status });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Ecosystem Analytics
 app.get('/api/analytics', async (req, res) => {
     try {
         const totalJobs = await JobMetadata.countDocuments();
         const profiles = await Profile.find();
+
+        // Volume and Reputation
         const totalVolume = profiles.reduce((acc, p) => acc + (p.totalEarned || 0), 0);
         const avgReputation = profiles.length > 0 ?
             profiles.reduce((acc, p) => acc + (p.reputationScore || 0), 0) / profiles.length : 0;
+
+        // Category Distribution
+        const jobs = await JobMetadata.find({}, 'category status createdAt milestones');
+        const categoryDist = jobs.reduce((acc, job) => {
+            const cat = job.category || 'Uncategorized';
+            acc[cat] = (acc[cat] || 0) + 1;
+            return acc;
+        }, {});
+
+        // Monthly Trends (Jobs Created)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 30); // 30 day history
+
+        const trends = await JobMetadata.aggregate([
+            { $match: { createdAt: { $gte: sevenDaysAgo } } },
+            {
+                $group: {
+                    _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { "_id": 1 } }
+        ]);
+
+        // TVL Approximation (Sum of unreleased milestones)
+        let tvl = 0;
+        jobs.forEach(job => {
+            if (job.status === 1) { // 1 = Active/Accepted
+                job.milestones.forEach(m => {
+                    if (!m.isReleased) {
+                        tvl += parseFloat(m.amount || 0);
+                    }
+                });
+            }
+        });
 
         res.json({
             totalJobs,
             totalVolume,
             avgReputation,
-            totalUsers: profiles.length
+            totalUsers: profiles.length,
+            categoryDistribution: Object.entries(categoryDist).map(([name, value]) => ({ name, value })),
+            trends: trends.map(t => ({ date: t._id, count: t.count })),
+            tvl
         });
     } catch (error) {
+        console.error('[ANALYTICS] Fetch Error:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -498,6 +582,37 @@ app.post('/api/storage/upload-file', apiLimiter, upload.single('file'), async (r
         if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
         const cid = await uploadFileToIPFS(req.file.buffer, req.file.originalname);
         res.json({ cid, url: `https://gateway.pinata.cloud/ipfs/${cid}` });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+// GDPR Compliance Endpoints
+app.post('/api/gdpr/consent', async (req, res) => {
+    try {
+        const { address, category, basis, purpose, granted } = req.body;
+        await GDPRService.recordConsent(address, category, basis, purpose, granted, req.ip, req.headers['user-agent']);
+        res.json({ ok: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/gdpr/export/:address', async (req, res) => {
+    try {
+        const data = await GDPRService.getUserDataExport(req.params.address, 'user_request', req.ip);
+        if (!data) return res.status(404).json({ error: 'Profile not found' });
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/gdpr/delete/:address', async (req, res) => {
+    try {
+        const result = await GDPRService.deleteUserData(req.params.address, 'user_request', req.ip);
+        res.json(result);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

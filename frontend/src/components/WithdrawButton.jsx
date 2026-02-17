@@ -9,7 +9,7 @@ import { showPendingToast, updateToastToSuccess, updateToastToError, handleError
 export default function WithdrawButton({ address }) {
     const client = usePublicClient();
     const [selectedToken, setSelectedToken] = useState(SUPPORTED_TOKENS[0].address);
-    const [balance, setBalance] = useState(null);
+    const [isConfirming, setIsConfirming] = useState(false);
 
     // Read Balance from Escalated "balances" mapping
     const { data: balanceData, refetch, isLoading: isReading } = useReadContract({
@@ -35,9 +35,11 @@ export default function WithdrawButton({ address }) {
 
             // Show pending toast with link
             const toastId = showPendingToast(hash);
+            setIsConfirming(true);
 
             // Wait for transaction receipt
             const receipt = await client.waitForTransactionReceipt({ hash });
+            setIsConfirming(false);
 
             if (receipt.status === 'success') {
                 updateToastToSuccess(toastId, "Withdrawal Successful!");
@@ -46,6 +48,7 @@ export default function WithdrawButton({ address }) {
                 updateToastToError(toastId, { shortMessage: "Transaction Reverted" });
             }
         } catch (error) {
+            setIsConfirming(false);
             handleError(error);
         }
     };
@@ -74,7 +77,7 @@ export default function WithdrawButton({ address }) {
             <div className="flex items-end justify-between">
                 <div>
                     <div className="text-3xl font-black tracking-tight flex items-center gap-2">
-                        {balance || '0.0'}
+                        {balanceData ? formatEther(balanceData) : '0.0'}
                         {isReading && <Loader2 size={16} className="animate-spin opacity-50" />}
                     </div>
                     <span className="text-xs text-text-muted">Available to claim</span>
@@ -82,7 +85,7 @@ export default function WithdrawButton({ address }) {
 
                 <button
                     onClick={handleWithdraw}
-                    disabled={!balance || balance === '0' || isPending || isConfirming}
+                    disabled={!balanceData || balanceData === 0n || isPending || isConfirming}
                     className="btn-primary !py-2 !px-4 text-xs flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     {isPending || isConfirming ? (

@@ -40,6 +40,7 @@
     "react-hot-toast": "^2.4.1",
     "react-toastify": "^11.0.5",
     "react-window": "^2.2.5",
+    "recharts": "^3.7.0",
     "siwe": "^2.3.2",
     "three": "^0.160.0",
     "viem": "^2.43.3",

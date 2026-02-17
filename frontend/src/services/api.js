@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:3001/api';
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
 const handleResponse = async (response) => {
     if (!response.ok) {
@@ -51,4 +51,9 @@ export const api = {
 
     getDisputes: () => fetch(`${API_URL}/disputes`).then(handleResponse),
     analyzeDispute: (jobId) => fetch(`${API_URL}/disputes/${jobId}/analyze`, { method: 'POST' }).then(handleResponse),
+    resolveDispute: (jobId, data) => fetch(`${API_URL}/disputes/${jobId}/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    }).then(handleResponse),
 };

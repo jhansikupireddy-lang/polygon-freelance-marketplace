@@ -11,15 +11,16 @@ import { WagmiProvider, http, fallback, useAccount } from 'wagmi';
 import { polygon, polygonAmoy, hardhat, base, baseSepolia } from 'wagmi/chains';
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import { SiweMessage } from 'siwe';
-import { HuddleProvider, HuddleClient } from '@huddle01/react';
 // import { ApolloClient, InMemoryCache, ApolloProvider } from '@apollo/client';
+import { HuddleClient, HuddleProvider } from '@huddle01/react';
 
 const huddleClient = new HuddleClient({
-    projectId: import.meta.env.VITE_HUDDLE_PROJECT_ID || 'yS_cM7SrkNqXv3193R2W1nI_7P3j3P-z',
+    projectId: import.meta.env.VITE_HUDDLE_PROJECT_ID,
     options: {
         activeSpeakersLimit: 5,
     },
 });
+
 
 function ConnectionLogger({ children }) {
     const { address, isConnected, isConnecting, isReconnecting } = useAccount();

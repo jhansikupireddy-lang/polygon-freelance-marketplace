@@ -1,4 +1,5 @@
 require("@nomicfoundation/hardhat-toolbox");
+require("@nomicfoundation/hardhat-ethers");
 require("@openzeppelin/hardhat-upgrades");
 require("dotenv").config();
 require("solidity-coverage");

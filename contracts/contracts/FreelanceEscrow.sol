@@ -44,6 +44,11 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
     /// @notice Flag for emergency mode (pauses most functions)
     bool public emergencyMode; 
 
+    uint256 public constant REWARD_BASE = 100 * 1e18;
+    uint256 public constant SUPREME_REWARD_BOOST = 3;
+    uint256 public constant BASIS_POINTS_DIVISOR = 10000;
+    uint256 public constant MAX_PLATFORM_FEE_BPS = 1000; // 10%
+
     error EmergencyActive();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -108,28 +113,52 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
 
     /**
      * @notice Sets the platform fee in basis points (10000 = 100%).
-     * @dev Limited to a maximum of 10% (1000 bps).
+     * @dev Limited to a maximum of 10% (MAX_PLATFORM_FEE_BPS).
      * @param _bps Fee in basis points.
      */
     function setPlatformFee(uint256 _bps) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (_bps > 1000) revert InvalidStatus(); // Max 10%
+        if (_bps > MAX_PLATFORM_FEE_BPS) revert InvalidStatus(); 
         platformFeeBps = _bps;
     }
 
+    /**
+     * @notice Updates the PolyToken reward contract address.
+     * @param _token New token address.
+     */
     function setPolyToken(address _token) external onlyRole(DEFAULT_ADMIN_ROLE) {
         polyToken = _token;
     }
 
+    /**
+     * @notice Updates the Reputation contract address.
+     * @param _rep New reputation address.
+     */
     function setReputationContract(address _rep) external onlyRole(DEFAULT_ADMIN_ROLE) {
         reputationContract = _rep;
     }
 
+    /**
+     * @notice Updates the Completion Certificate contract address.
+     * @param _cert New certificate address.
+     */
     function setCompletionCertContract(address _cert) external onlyRole(DEFAULT_ADMIN_ROLE) {
         completionCertContract = _cert;
     }
 
+    /**
+     * @notice Updates the Review SBT contract address.
+     * @param _rsbt New Review SBT address.
+     */
     function setReviewSBT(address _rsbt) external onlyRole(DEFAULT_ADMIN_ROLE) {
         reviewSBT = _rsbt;
+    }
+
+    /**
+     * @notice Updates the Privacy Shield contract address.
+     * @param _ps New Privacy Shield address.
+     */
+    function setPrivacyShield(address _ps) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        privacyShield = _ps;
     }
 
     /**
@@ -179,7 +208,7 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
         if (hasApplied[jobId][_msgSender()]) revert InvalidStatus();
         if (jobApplications[jobId].length >= MAX_APPLICATIONS_PER_JOB) revert NotAuthorized(); // Simplified error for "Capacity Reached"
 
-        uint256 stake = (job.amount * 5) / 100;
+        uint256 stake = (job.amount * APPLICATION_STAKE_PERCENT) / 100;
 
         if (job.token != address(0)) {
             IERC20(job.token).safeTransferFrom(_msgSender(), address(this), stake);
@@ -268,10 +297,6 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
         // but traditionally we just wait for client to release funds.
     }
 
-    /**
-     * @notice Allows users to withdraw their owed balances.
-     * @param token The address of the token to withdraw (address(0) for native).
-     */
     /**
      * @notice Withdraws available funds for the caller in the specified token.
      * @param token Address of the token (0 for native).
@@ -495,25 +520,13 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
         if (job.paid) revert AlreadyPaid();
 
         uint256 payout = job.amount - job.totalPaidOut;
-        uint256 fee = (job.amount * platformFeeBps) / 10000;
+        uint256 fee = (job.amount * platformFeeBps) / BASIS_POINTS_DIVISOR;
         
         // Fee cannot exceed the remaining payout (prevents underflow)
         if (fee > payout) fee = payout;
 
         // Supreme Level Check: 0% Fee for Elite Veterans or Private Verified Users
-        bool isSupremeMember = false;
-        if (reputationContract != address(0)) {
-            try IERC1155(reputationContract).balanceOf(job.freelancer, uint256(job.categoryId)) returns (uint256 bal) {
-                if (bal >= reputationThreshold) isSupremeMember = true;
-            } catch {}
-        }
-        
-        // ZK-Privacy Shield Backup
-        if (!isSupremeMember && privacyShield != address(0)) {
-            try PrivacyShield(privacyShield).isVerified(job.freelancer) returns (bool verified) {
-                if (verified) isSupremeMember = true;
-            } catch {}
-        }
+        bool isSupremeMember = _checkSupremeStatus(job.freelancer, uint256(job.categoryId));
 
         if (isSupremeMember) fee = 0;
         
@@ -534,35 +547,20 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
 
         if (reputationContract != address(0)) {
             (bool success, ) = reputationContract.call(abi.encodeWithSignature("levelUp(address,uint256,uint256)", job.freelancer, job.categoryId, 1));
-            (success);
+            success;
             (success, ) = reputationContract.call(abi.encodeWithSignature("updateRating(address,uint8)", job.freelancer, rating));
-            (success);
+            success;
         }
 
         if (rating == 5 && reviewSBT != address(0)) {
             (bool success, ) = reviewSBT.call(abi.encodeWithSignature("mint(address)", job.freelancer));
-            (success);
+            success;
         }
 
         if (polyToken != address(0)) {
-            uint256 reward = 100 * 1e18;
-            // Supreme Level Check: 3x Loyalty Boost
-            isSupremeMember = false;
-            if (reputationContract != address(0)) {
-                (bool s, bytes memory data) = reputationContract.call(abi.encodeWithSignature("balanceOf(address,uint256)", job.freelancer, job.categoryId));
-                if (s && data.length >= 32) {
-                    if (abi.decode(data, (uint256)) >= reputationThreshold) isSupremeMember = true;
-                }
-            }
-            if (!isSupremeMember && privacyShield != address(0)) {
-                try PrivacyShield(privacyShield).isVerified(job.freelancer) returns (bool verified) {
-                    if (verified) isSupremeMember = true;
-                } catch {}
-            }
-
-            if (isSupremeMember) reward = 300 * 1e18; // 3x Boost for Vets
+            uint256 reward = isSupremeMember ? REWARD_BASE * SUPREME_REWARD_BOOST : REWARD_BASE;
             (bool success, ) = polyToken.call(abi.encodeWithSignature("mint(address,uint256)", job.freelancer, reward));
-            (success);
+            success;
         }
 
         // Finalize payout by withdrawing from yield manager if active
@@ -581,6 +579,29 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
         emit FundsReleased(jobId, job.freelancer, payout, jobId);
         emit ReviewSubmitted(jobId, job.client, job.freelancer, rating, "");
     }
+
+    /**
+     * @notice Internal helper to check if a user qualifies for Zenith 'Supreme' benefits.
+     */
+    function _checkSupremeStatus(address user, uint256 categoryId) internal view returns (bool) {
+        if (isSupreme[user]) return true;
+        
+        if (reputationContract != address(0)) {
+            try IERC1155(reputationContract).balanceOf(user, categoryId) returns (uint256 bal) {
+                if (bal >= reputationThreshold) return true;
+            } catch {}
+        }
+        
+        if (privacyShield != address(0)) {
+            try PrivacyShield(privacyShield).isVerified(user) returns (bool verified) {
+                return verified;
+            } catch {}
+        }
+        
+        return false;
+    }
+
+    function void(bool) internal pure {}
 
     /**
      * @notice Traditional releaseFunds call, effectively completes the job with a default 5-star rating.

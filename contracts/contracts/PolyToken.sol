@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 /**
@@ -11,7 +12,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
  * @notice Governance and utility token with quadratic voting support
  * @dev ERC20Votes enables on-chain governance with delegation
  */
-contract PolyToken is ERC20, ERC20Burnable, ERC20Votes, AccessControl {
+contract PolyToken is ERC20, ERC20Burnable, ERC20Permit, ERC20Votes, AccessControl {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     
     uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18; // 1 billion tokens
@@ -56,20 +57,29 @@ contract PolyToken is ERC20, ERC20Burnable, ERC20Votes, AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(MINTER_ROLE, msg.sender);
         
-        // Initial distribution
-        _mint(msg.sender, LIQUIDITY_ALLOCATION); // For DEX liquidity
+        // Initial distribution for liquidity provision
+        _mint(msg.sender, LIQUIDITY_ALLOCATION); 
     }
 
     /**
-     * @notice Mint tokens (restricted to MINTER_ROLE)
-     * @param to Recipient address
-     * @param amount Amount to mint
-     * @param reason Reason for minting
+     * @notice Mint tokens with a reason (restricted to MINTER_ROLE).
+     * @param to Recipient address.
+     * @param amount Amount to mint.
+     * @param reason Reason string for logging.
      */
-    function mint(address to, uint256 amount, string calldata reason) external onlyRole(MINTER_ROLE) {
-        require(totalSupply() + amount <= MAX_SUPPLY, "Exceeds max supply");
+    function mint(address to, uint256 amount, string memory reason) public onlyRole(MINTER_ROLE) {
+        if (totalSupply() + amount > MAX_SUPPLY) revert("Exceeds max supply");
         _mint(to, amount);
         emit TokensMinted(to, amount, reason);
+    }
+
+    /**
+     * @notice Simplified mint for compatibility with external contracts.
+     * @param to Recipient address.
+     * @param amount Amount to mint.
+     */
+    function mint(address to, uint256 amount) external onlyRole(MINTER_ROLE) {
+        mint(to, amount, "Zenith Rewards");
     }
 
     /**

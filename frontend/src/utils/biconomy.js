@@ -11,13 +11,22 @@ const BUNDLER_URL = import.meta.env.VITE_BICONOMY_BUNDLER_URL || "";
  * @returns {Promise<object>} Social Login instance
  */
 export async function initSocialLogin() {
+    const projectId = import.meta.env.VITE_PARTICLE_PROJECT_ID;
+    const clientKey = import.meta.env.VITE_PARTICLE_CLIENT_KEY;
+    const appId = import.meta.env.VITE_PARTICLE_APP_ID;
+
+    if (!projectId || !clientKey || !appId) {
+        console.warn('[BICONOMY] Particle Auth credentials not configured. Social login will fail.');
+        return null;
+    }
+
     try {
-        const { ParticleAuthModule, ParticleProvider } = await import("@biconomy/particle-auth");
+        const { ParticleAuthModule } = await import("@biconomy/particle-auth");
 
         const particle = new ParticleAuthModule.ParticleAuth({
-            projectId: "b850d5e1-8f5c-4d8e-9c7a-5e1d5e5e5e5e", // Replace with real Particle Project ID
-            clientKey: "c6ed5e5e-5e5e-5e5e-5e5e-5e5e5e5e5e5e", // Replace with real Particle Client Key
-            appId: "a123e5e5-5e5e-5e5e-5e5e-5e5e5e5e5e5e",     // Replace with real Particle App ID
+            projectId,
+            clientKey,
+            appId,
             chainId: 80002, // Amoy
             wallet: { displayWalletEntry: true }
         });

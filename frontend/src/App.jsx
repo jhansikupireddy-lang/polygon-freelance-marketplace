@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import logo from './assets/logo.png';
-import { Briefcase, PlusCircle, LayoutDashboard, Ticket, MessageSquare, Trophy, User, Gavel, Cpu, Activity, Globe } from 'lucide-react';
+import { Briefcase, PlusCircle, LayoutDashboard, Ticket, MessageSquare, Trophy, User, Gavel, Cpu, Activity, Globe, BarChart3, Menu, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Dashboard from './components/Dashboard';
 import CreateJob from './components/CreateJob';
@@ -17,17 +17,22 @@ import ArbitrationDashboard from './components/ArbitrationDashboard';
 import ManagerDashboard from './components/ManagerDashboard';
 import CrossChainDashboard from './components/CrossChainDashboard';
 import CreateCrossChainJob from './components/CreateCrossChainJob';
+import PrivacyCenter from './components/PrivacyCenter';
+import SBTGallery from './components/SBTGallery';
+import AnalyticsDashboard from './components/AnalyticsDashboard';
 import { NotificationManager } from './components/NotificationManager';
-import { ToastContainer } from 'react-toastify';
+import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { useAccount, useBalance } from 'wagmi';
+import { useAccount, useBalance, useWalletClient } from 'wagmi';
 import { initSocialLogin, createBiconomySmartAccount } from './utils/biconomy';
 import { createWalletClient, custom } from 'viem';
 import { polygonAmoy } from 'viem/chains';
-import { Mail, LogOut, ShieldCheck } from 'lucide-react';
+import { Mail, LogOut, ShieldCheck, Shield } from 'lucide-react';
+import { SiweMessage } from 'siwe';
 
 function App() {
-  const { address } = useAccount();
+  const { address, isConnected } = useAccount();
+  const { data: walletClient } = useWalletClient();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isCrossChainCreateOpen, setIsCrossChainCreateOpen] = useState(false);
   const [portfolioAddress, setPortfolioAddress] = useState(null);
@@ -36,6 +41,30 @@ function App() {
   const [smartAccount, setSmartAccount] = useState(null);
   const [socialProvider, setSocialProvider] = useState(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isInitializingGasless, setIsInitializingGasless] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Auto-init Smart Account for EOA if Gasless is enabled
+  React.useEffect(() => {
+    const initGaslessForEOA = async () => {
+      if (isConnected && walletClient && isGasless && !smartAccount && !isLoggingIn && !isInitializingGasless) {
+        setIsInitializingGasless(true);
+        try {
+          console.log("[BICONOMY] Initializing Smart Account for EOA...");
+          const sa = await createBiconomySmartAccount(walletClient);
+          if (sa) {
+            setSmartAccount(sa);
+            toast.success("Quantum Gas Relay Active");
+          }
+        } catch (error) {
+          console.error("[BICONOMY] EOA Smart Account init failed:", error);
+        } finally {
+          setIsInitializingGasless(false);
+        }
+      }
+    };
+    initGaslessForEOA();
+  }, [isConnected, walletClient, isGasless, smartAccount, isLoggingIn]);
 
   const handleSocialLogin = async () => {
     setIsLoggingIn(true);
@@ -49,18 +78,49 @@ function App() {
       const { ParticleProvider } = await import("@biconomy/particle-auth");
       const provider = new ParticleProvider(particle.auth);
 
-      const walletClient = createWalletClient({
+      const walletClientSa = createWalletClient({
         chain: polygonAmoy,
         transport: custom(provider)
       });
 
-      const sa = await createBiconomySmartAccount(walletClient);
+      const sa = await createBiconomySmartAccount(walletClientSa);
+
+      // Perform SIWE verification for the smart account
+      const saAddress = sa.accountAddress;
+      const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+
+      const nonceRes = await fetch(`${API_URL}/auth/nonce/${saAddress}`);
+      const { nonce } = await nonceRes.json();
+
+      const message = new SiweMessage({
+        domain: window.location.host,
+        address: saAddress,
+        statement: 'Sign in to PolyLance with Smart Account',
+        uri: window.location.origin,
+        version: '1',
+        chainId: 80002,
+        nonce,
+      });
+
+      const signature = await sa.signMessage(message.prepareMessage());
+
+      const verifyRes = await fetch(`${API_URL}/auth/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: message.prepareMessage(),
+          signature,
+        }),
+      });
+
+      if (!verifyRes.ok) throw new Error("Backend verification failed");
+
       setSmartAccount(sa);
       setSocialProvider(particle);
       toast.success("Welcome, Supreme Member!");
     } catch (err) {
       console.error("[SOCIAL] Login error:", err);
-      toast.error("Social login failed.");
+      toast.error("Social login/verification failed.");
     } finally {
       setIsLoggingIn(false);
     }
@@ -93,8 +153,10 @@ function App() {
       case 'justice': return <ArbitrationDashboard address={effectiveAddress} />;
       case 'manager': return <ManagerDashboard address={effectiveAddress} />;
       case 'cross-chain': return <CrossChainDashboard address={effectiveAddress} />;
+      case 'analytics': return <AnalyticsDashboard />;
+      case 'sbt': return <SBTGallery address={effectiveAddress} />;
       case 'terms': return <TermsOfService />;
-      case 'privacy': return <PrivacyPolicy />;
+      case 'privacy': return <PrivacyCenter address={effectiveAddress} />;
       default: return <Dashboard address={effectiveAddress} />;
     }
   };
@@ -110,45 +172,47 @@ function App() {
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-500/10 rounded-full blur-[120px] animate-pulse" />
       </div>
 
-      <aside className="sidebar">
-        <div className="sidebar-logo">
+      <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
+        <div className="sidebar-logo flex items-center justify-between">
           <div className="flex flex-col">
             <span className="font-black text-xl tracking-tighter text-white">POLY<span className="text-primary">LANCE</span></span>
             <span className="text-[10px] uppercase tracking-widest font-black text-primary opacity-80 leading-none">Zenith Protocol</span>
           </div>
+          <button
+            className="lg:hidden p-2 text-text-muted hover:text-white"
+            onClick={() => setIsSidebarOpen(false)}
+          >
+            <X size={20} />
+          </button>
         </div>
 
         <nav className="sidebar-nav">
-          <button className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
-            <LayoutDashboard size={20} /> Dashboard
-          </button>
-          <button className={`nav-item ${activeTab === 'jobs' ? 'active' : ''}`} onClick={() => setActiveTab('jobs')}>
-            <Briefcase size={20} /> Explorer
-          </button>
-          <button className={`nav-item ${activeTab === 'create' ? 'active' : ''}`} onClick={() => setActiveTab('create')}>
-            <PlusCircle size={20} /> Create Gig
-          </button>
-          <button className={`nav-item ${activeTab === 'chat' ? 'active' : ''}`} onClick={() => setActiveTab('chat')}>
-            <MessageSquare size={20} /> Neural Chat
-          </button>
-          <button className={`nav-item ${activeTab === 'leaderboard' ? 'active' : ''}`} onClick={() => setActiveTab('leaderboard')}>
-            <Trophy size={20} /> Hall of Fame
-          </button>
-          <button className={`nav-item ${activeTab === 'governance' ? 'active' : ''}`} onClick={() => setActiveTab('governance')}>
-            <Cpu size={20} /> Governance
-          </button>
-          <button className={`nav-item ${activeTab === 'manager' ? 'active' : ''}`} onClick={() => setActiveTab('manager')}>
-            <Activity size={20} /> Escrow Manager
-          </button>
-          <button className={`nav-item ${activeTab === 'justice' ? 'active' : ''}`} onClick={() => setActiveTab('justice')}>
-            <Gavel size={20} /> Justice
-          </button>
-          <button className={`nav-item ${activeTab === 'cross-chain' ? 'active' : ''}`} onClick={() => setActiveTab('cross-chain')}>
-            <Globe size={20} /> Global Edge
-          </button>
-          <button className={`nav-item ${activeTab === 'nfts' ? 'active' : ''}`} onClick={() => setActiveTab('nfts')}>
-            <Ticket size={20} /> Legacy Vault
-          </button>
+          {[
+            { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+            { id: 'analytics', icon: BarChart3, label: 'Neural Stats' },
+            { id: 'jobs', icon: Briefcase, label: 'Explorer' },
+            { id: 'create', icon: PlusCircle, label: 'Create Gig' },
+            { id: 'chat', icon: MessageSquare, label: 'Neural Chat' },
+            { id: 'leaderboard', icon: Trophy, label: 'Hall of Fame' },
+            { id: 'governance', icon: Cpu, label: 'Governance' },
+            { id: 'manager', icon: Activity, label: 'Escrow Manager' },
+            { id: 'justice', icon: Gavel, label: 'Justice' },
+            { id: 'cross-chain', icon: Globe, label: 'Global Edge' },
+            { id: 'nfts', icon: Ticket, label: 'Asset Vault' },
+            { id: 'sbt', icon: Award, label: 'Identity Vault' },
+            { id: 'privacy', icon: Shield, label: 'Privacy Center' },
+          ].map(item => (
+            <button
+              key={item.id}
+              className={`nav-item ${activeTab === item.id ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab(item.id);
+                setIsSidebarOpen(false);
+              }}
+            >
+              <item.icon size={20} /> {item.label}
+            </button>
+          ))}
         </nav>
 
         <div className="mt-auto p-4">
@@ -181,36 +245,42 @@ function App() {
       </aside>
 
       <main className="main-content">
-        <header className="header">
+        <header className="header flex items-center justify-between px-4 lg:px-8 h-[80px] border-b border-white/5 bg-black/20 backdrop-blur-md sticky top-0 z-[500]">
           <div className="flex items-center gap-4">
-            <h2 className="text-sm font-bold text-text-dim uppercase tracking-[0.2em]">
-              {activeTab.replace('-', ' ')}
-            </h2>
+            <button
+              className="lg:hidden p-2 text-text-muted hover:text-white bg-white/5 rounded-xl transition-all"
+              onClick={() => setIsSidebarOpen(true)}
+            >
+              <Menu size={20} />
+            </button>
+            <div className="flex flex-col">
+              <h2 className="text-xl font-black text-white tracking-tighter uppercase italic leading-none mb-1">
+                {activeTab.replace('-', ' ')}
+              </h2>
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[9px] font-black text-text-muted uppercase tracking-widest">Neural Link Active</span>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[11px] font-bold tracking-widest uppercase opacity-80">Mainnet Synced</span>
+
+          <div className="flex items-center gap-4 lg:gap-6">
+            <div
+              className="hidden sm:flex items-center gap-3 px-4 py-2 bg-white/5 rounded-2xl border border-white/10 group hover:border-primary/50 transition-all cursor-pointer"
+              onClick={() => setIsGasless(!isGasless)}
+            >
+              {isGasless ? <ShieldCheck size={16} className="text-primary animate-pulse" /> : <Shield size={16} className="text-text-dim" />}
+              <span className={`text-[10px] font-black uppercase tracking-widest ${isGasless ? 'text-primary' : 'text-text-dim'}`}>
+                {isGasless ? 'Quantum Relay' : 'Standard'}
+              </span>
             </div>
 
-            {!smartAccount ? (
-              <button
-                onClick={handleSocialLogin}
-                disabled={isLoggingIn}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white font-bold text-xs transition-all shadow-lg shadow-primary/20"
-              >
-                {isLoggingIn ? <div className="loading-spinner h-4 w-4" /> : <Mail size={16} />}
-                {isLoggingIn ? "Initializing..." : "SignIn / Google"}
-              </button>
-            ) : (
-              <div className="flex items-center gap-3">
+            {smartAccount && (
+              <div className="hidden md:flex items-center gap-3 p-1.5 pl-4 bg-primary/10 rounded-2xl border border-primary/20">
                 <div className="flex flex-col items-end">
-                  <div className="flex items-center gap-1.5">
-                    <ShieldCheck size={12} className="text-primary" />
-                    <span className="text-[10px] font-black text-white tracking-widest uppercase">Smart Account</span>
-                  </div>
-                  <span className="text-[11px] font-bold text-text-dim">
-                    {smartAccount.accountAddress.slice(0, 6)}...{smartAccount.accountAddress.slice(-4)}
+                  <span className="text-[9px] font-black text-primary tracking-widest uppercase">Smart Wallet</span>
+                  <span className="text-[11px] font-bold text-text-dim font-mono">
+                    {smartAccount.accountAddress.slice(0, 4)}...{smartAccount.accountAddress.slice(-4)}
                   </span>
                 </div>
                 <button onClick={handleLogout} className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-text-muted hover:text-white transition-colors">
@@ -219,7 +289,18 @@ function App() {
               </div>
             )}
 
-            <ConnectButton />
+            {!smartAccount && (
+              <button
+                onClick={handleSocialLogin}
+                disabled={isLoggingIn}
+                className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white font-bold text-xs transition-all shadow-lg shadow-primary/20"
+              >
+                {isLoggingIn ? <div className="loading-spinner h-4 w-4" /> : <Mail size={16} />}
+                <span>{isLoggingIn ? "Initializing..." : "Google Login"}</span>
+              </button>
+            )}
+
+            <ConnectButton accountStatus="avatar" chainStatus="icon" showBalance={false} />
           </div>
         </header>
 
@@ -237,10 +318,10 @@ function App() {
           </AnimatePresence>
         </div>
 
-        <footer className="footer">
+        <footer className="footer hidden lg:flex">
           <div className="flex gap-6">
-            <button onClick={() => setActiveTab('terms')} className="text-xs text-text-muted hover:text-white transition-colors">Terms of Service</button>
-            <button onClick={() => setActiveTab('privacy')} className="text-xs text-text-muted hover:text-white transition-colors">Privacy Policy</button>
+            <button onClick={() => setActiveTab('terms')} className="text-xs text-text-muted hover:text-white transition-colors">Terms</button>
+            <button onClick={() => setActiveTab('privacy')} className="text-xs text-text-muted hover:text-white transition-colors">Privacy</button>
           </div>
           <p className="text-xs text-text-dim font-medium tracking-tight">
             Designed for the <span className="text-primary font-bold italic">Supreme Zenith</span> Era. &copy; 2026 PolyLance.
@@ -248,26 +329,41 @@ function App() {
         </footer>
       </main>
 
+      {/* Mobile Sidebar Overlay */}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsSidebarOpen(false)}
+            className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[2500]"
+          />
+        )}
+      </AnimatePresence>
+
       <div className="mobile-nav">
-        <button className={`mobile-nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
-          <LayoutDashboard size={20} />
-          <span>Home</span>
-        </button>
-        <button className={`mobile-nav-item ${activeTab === 'jobs' ? 'active' : ''}`} onClick={() => setActiveTab('jobs')}>
-          <Briefcase size={20} />
-          <span>Jobs</span>
-        </button>
-        <button className={`mobile-nav-item ${activeTab === 'create' ? 'active' : ''}`} onClick={() => setActiveTab('create')}>
-          <PlusCircle size={20} />
-          <span>Post</span>
-        </button>
-        <button className={`mobile-nav-item ${activeTab === 'chat' ? 'active' : ''}`} onClick={() => setActiveTab('chat')}>
-          <MessageSquare size={20} />
-          <span>Chat</span>
-        </button>
-        <button className={`mobile-nav-item ${activeTab === 'leaderboard' ? 'active' : ''}`} onClick={() => setActiveTab('leaderboard')}>
-          <Trophy size={20} />
-          <span>Elite</span>
+        {[
+          { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
+          { id: 'jobs', icon: Briefcase, label: 'Jobs' },
+          { id: 'create', icon: PlusCircle, label: 'Post' },
+          { id: 'chat', icon: MessageSquare, label: 'Chat' },
+        ].map(item => (
+          <button
+            key={item.id}
+            className={`mobile-nav-item ${activeTab === item.id ? 'active' : ''}`}
+            onClick={() => setActiveTab(item.id)}
+          >
+            <item.icon />
+            <span>{item.label}</span>
+          </button>
+        ))}
+        <button
+          className="mobile-nav-item"
+          onClick={() => setIsSidebarOpen(true)}
+        >
+          <Menu />
+          <span>More</span>
         </button>
       </div>
     </div>

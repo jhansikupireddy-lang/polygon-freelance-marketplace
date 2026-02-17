@@ -391,4 +391,13 @@ contract QuadraticGovernance is
         override
         onlyRole(UPGRADER_ROLE)
     {}
+
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(GovernorUpgradeable, AccessControlUpgradeable)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
+    }
 }

@@ -3,7 +3,8 @@ import { Gavel, AlertTriangle, ShieldCheck, Scale, Cpu, Search, FileText, Chevro
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useWriteContract, useReadContract } from 'wagmi';
 import FreelanceEscrowABI from '../contracts/FreelanceEscrow.json';
-import { CONTRACT_ADDRESS } from '../constants';
+import CrossChainEscrowManagerABI from '../contracts/CrossChainEscrowManager.json';
+import { CONTRACT_ADDRESS, CROSS_CHAIN_ESCROW_MANAGER_ADDRESS } from '../constants';
 import { api } from '../services/api';
 import { toast } from 'react-toastify';
 
@@ -53,13 +54,40 @@ const ArbitrationDashboard = () => {
         }
     };
 
-    const handleResolution = (jobId, bps) => {
-        writeContract({
-            address: CONTRACT_ADDRESS,
-            abi: FreelanceEscrowABI.abi,
-            functionName: 'resolveDisputeManual',
-            args: [BigInt(jobId), BigInt(bps * 100)],
-        });
+    const handleResolution = async (jobId, bps, isCrossChain = false) => {
+        try {
+            const ruling = bps === 100 ? 2 : (bps === 0 ? 1 : 3); // 1: Client, 2: Freelancer, 3: Split
+
+            if (isCrossChain) {
+                writeContract({
+                    address: CROSS_CHAIN_ESCROW_MANAGER_ADDRESS,
+                    abi: CrossChainEscrowManagerABI.abi,
+                    functionName: 'resolveCrossChainDispute',
+                    args: [BigInt(jobId), BigInt(ruling)],
+                }, {
+                    onSuccess: async () => {
+                        await api.resolveDispute(jobId, { ruling, reasoning: selectedJob.disputeData?.reasoning || 'Manual Resolution' });
+                        toast.success("Cross-Chain Dispute Resolved");
+                        fetchDisputes();
+                    }
+                });
+            } else {
+                writeContract({
+                    address: CONTRACT_ADDRESS,
+                    abi: FreelanceEscrowABI.abi,
+                    functionName: 'resolveDisputeManual',
+                    args: [BigInt(jobId), BigInt(bps * 100)],
+                }, {
+                    onSuccess: async () => {
+                        await api.resolveDispute(jobId, { ruling, reasoning: selectedJob.disputeData?.reasoning || 'Manual Resolution' });
+                        toast.success("Dispute Resolved Successfully");
+                        fetchDisputes();
+                    }
+                });
+            }
+        } catch (err) {
+            toast.error("Resolution Failed: " + err.message);
+        }
     };
 
     if (!isAdmin) {
@@ -208,9 +236,9 @@ const ArbitrationDashboard = () => {
                                 <div className="border-t border-white/5 pt-8">
                                     <h4 className="text-xs font-black uppercase tracking-widest text-text-dim mb-6">Manual Overwrite</h4>
                                     <div className="grid grid-cols-3 gap-4">
-                                        <button onClick={() => handleResolution(selectedJob.jobId, 0)} className="btn-ghost !bg-rose-500/10 !text-rose-500 border-rose-500/20 hover:!bg-rose-500 hover:!text-white">Rule for Client</button>
-                                        <button onClick={() => handleResolution(selectedJob.jobId, 50)} className="btn-ghost border-white/10">Split 50/50</button>
-                                        <button onClick={() => handleResolution(selectedJob.jobId, 100)} className="btn-ghost !bg-emerald-500/10 !text-emerald-500 border-emerald-500/20 hover:!bg-emerald-500 hover:!text-white">Rule for Freelancer</button>
+                                        <button onClick={() => handleResolution(selectedJob.jobId, 0, selectedJob.isCrossChain)} className="btn-ghost !bg-rose-500/10 !text-rose-500 border-rose-500/20 hover:!bg-rose-500 hover:!text-white">Rule for Client</button>
+                                        <button onClick={() => handleResolution(selectedJob.jobId, 50, selectedJob.isCrossChain)} className="btn-ghost border-white/10">Split 50/50</button>
+                                        <button onClick={() => handleResolution(selectedJob.jobId, 100, selectedJob.isCrossChain)} className="btn-ghost !bg-emerald-500/10 !text-emerald-500 border-emerald-500/20 hover:!bg-emerald-500 hover:!text-white">Rule for Freelancer</button>
                                     </div>
                                 </div>
                             </motion.div>
