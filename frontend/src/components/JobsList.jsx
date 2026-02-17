@@ -15,6 +15,7 @@ import { uploadJSONToIPFS } from '../utils/ipfs';
 import { createBiconomySmartAccount, submitWorkGasless } from '../utils/biconomy';
 // import { useQuery, gql } from '@apollo/client';
 import { useTokenPrice } from '../hooks/useTokenPrice';
+import { useAnimeAnimations } from '../hooks/useAnimeAnimations';
 
 /*
 const GET_JOBS_QUERY = gql`
@@ -57,6 +58,17 @@ function JobsList({ onUserClick, onSelectChat, gasless, smartAccount: propSmartA
     const [showMyJobs, setShowMyJobs] = React.useState(false);
     const [aiResults, setAiResults] = React.useState(null);
     const [isAiLoading, setIsAiLoading] = React.useState(false);
+    const { staggerFadeIn, slideInLeft } = useAnimeAnimations();
+    const headerRef = React.useRef(null);
+
+    // Initial animations
+    React.useEffect(() => {
+        if (headerRef.current) {
+            slideInLeft(headerRef.current);
+        }
+    }, []);
+
+
 
     // AI Intent Search Logic
     React.useEffect(() => {
@@ -64,7 +76,8 @@ function JobsList({ onUserClick, onSelectChat, gasless, smartAccount: propSmartA
             if (searchQuery.length > 3) {
                 setIsAiLoading(true);
                 try {
-                    const response = await axios.get(`${import.meta.env.VITE_API_URL || 'https://localhost:3001/api'}/search?q=${searchQuery}`);
+                    const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://localhost:3001/api';
+                    const response = await axios.get(`${apiBase}/search?q=${searchQuery}`);
                     setAiResults(response.data.jobs.map(j => j.jobId));
 
                     // Auto-set category if AI detected it
@@ -115,12 +128,21 @@ function JobsList({ onUserClick, onSelectChat, gasless, smartAccount: propSmartA
         return res;
     }, [jobs, aiResults, sortBy]);
 
+    // Stagger animation when jobs are loaded
+    React.useEffect(() => {
+        if (filteredJobs.length > 0) {
+            setTimeout(() => {
+                staggerFadeIn('.job-card-wrapper', 80);
+            }, 100);
+        }
+    }, [filteredJobs.length]);
+
     const isLoading = graphLoading || isAiLoading;
 
     return (
         <div className="container" style={{ padding: 0 }}>
             {/* Advanced Filter Bar */}
-            <header className="mb-12">
+            <header className="mb-12" ref={headerRef}>
                 <h1 className="text-5xl font-black mb-4 tracking-tighter">Global <span className="gradient-text">Opportunities</span></h1>
                 <p className="text-text-muted font-medium opacity-80 max-w-xl">
                     Discover and secure high-value contracts on the most efficient freelance protocol.
@@ -236,6 +258,7 @@ function JobsList({ onUserClick, onSelectChat, gasless, smartAccount: propSmartA
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: i * 0.05, duration: 0.4 }}
+                            className="job-card-wrapper"
                         >
                             <JobCard
                                 jobId={job.id}

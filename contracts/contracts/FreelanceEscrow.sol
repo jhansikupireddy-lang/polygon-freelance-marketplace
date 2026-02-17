@@ -730,7 +730,7 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
      * @param jobId The unique ID of the job.
      * @param freelancerBps The bps split for the freelancer (10000 = 100%).
      */
-    function resolveDisputeManual(uint256 jobId, uint256 freelancerBps) external onlyRole(DEFAULT_ADMIN_ROLE) whenNotPaused nonReentrant {
+    function resolveDisputeManual(uint256 jobId, uint256 freelancerBps) external onlyRole(ARBITRATOR_ROLE) whenNotPaused nonReentrant {
         Job storage job = jobs[jobId];
         if (job.status != JobStatus.Disputed) revert InvalidStatus();
         
@@ -750,6 +750,8 @@ contract FreelanceEscrow is FreelanceEscrowBase, PausableUpgradeable, IArbitrabl
         else balances[job.freelancer][job.token] += job.freelancerStake;
 
         if (clientAmt > 0) balances[job.client][job.token] += clientAmt;
+        
+        emit DisputeResolved(jobId, freelancerBps);
     }
 
     function _transferFunds(address to, address token, uint256 amt) internal {

@@ -1,13 +1,18 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useAccount, useReadContract } from 'wagmi';
 import { motion } from 'framer-motion';
 import { Award, ExternalLink } from 'lucide-react';
 import FreelanceEscrowABI from '../contracts/FreelanceEscrow.json';
 import { CONTRACT_ADDRESS } from '../constants';
+import { useAnimeAnimations } from '../hooks/useAnimeAnimations';
+import { animate, stagger } from 'animejs';
+
 
 
 function NFTGallery() {
     const { address, isConnected } = useAccount();
+    const { staggerFadeIn, slideInLeft, float } = useAnimeAnimations();
+    const headerRef = useRef(null);
 
     const { data: balance } = useReadContract({
         address: CONTRACT_ADDRESS,
@@ -18,9 +23,21 @@ function NFTGallery() {
 
     const nftCount = balance ? Number(balance) : 0;
 
+    useEffect(() => {
+        // Animate header on mount
+        if (headerRef.current) {
+            slideInLeft(headerRef.current);
+        }
+
+        // Stagger NFT cards
+        setTimeout(() => {
+            staggerFadeIn('.nft-card', 120);
+        }, 300);
+    }, [nftCount]);
+
     return (
         <div className="animate-fade">
-            <header className="mb-12 flex justify-between items-center bg-white/5 p-8 rounded-3xl border border-white/5">
+            <header className="mb-12 flex justify-between items-center bg-white/5 p-8 rounded-3xl border border-white/5" ref={headerRef}>
                 <div>
                     <h1 className="text-5xl font-black mb-2 tracking-tighter shimmer-text">Proof-of-Work</h1>
                     <p className="text-text-muted font-medium opacity-70">Your on-chain career achievements and certificates.</p>
@@ -47,6 +64,7 @@ function NFTGallery() {
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: i * 0.1 }}
+                                className="nft-card"
                             >
                                 <NFTCard balanceIndex={i} owner={address} />
                             </motion.div>

@@ -23,8 +23,8 @@ import { body, validationResult } from 'express-validator';
 import { GDPRService } from './services/gdpr.js';
 
 const apiLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per window
+    windowMs: 15 * 60 * 1000,
+    max: 10000, // Increased for development
     standardHeaders: true,
     legacyHeaders: false,
 });
@@ -457,8 +457,9 @@ app.post('/api/disputes/:jobId/resolve', async (req, res) => {
         const job = await JobMetadata.findOne({ jobId: parseInt(jobId) });
         if (!job) return res.status(404).json({ error: 'Job not found' });
 
-        // Update status based on ruling (1: Client, 2: Freelancer, 3: Split)
-        job.status = (ruling === 1) ? 5 : (ruling === 2) ? 4 : 4; // Simplified mapping
+        // Update status based on ruling (1: Split, 2: Client Wins, 3: Freelancer Wins)
+        // Global Status: 5: Completed, 6: Cancelled
+        job.status = (ruling === 3) ? 5 : 6;
         if (!job.disputeData) job.disputeData = {};
         job.disputeData.reasoning = reasoning;
         await job.save();

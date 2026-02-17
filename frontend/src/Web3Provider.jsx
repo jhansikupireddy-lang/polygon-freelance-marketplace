@@ -13,6 +13,7 @@ import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import { SiweMessage } from 'siwe';
 // import { ApolloClient, InMemoryCache, ApolloProvider } from '@apollo/client';
 import { HuddleClient, HuddleProvider } from '@huddle01/react';
+import { api } from './services/api';
 
 const huddleClient = new HuddleClient({
     projectId: import.meta.env.VITE_HUDDLE_PROJECT_ID,
@@ -36,7 +37,7 @@ function ConnectionLogger({ children }) {
     return children;
 }
 
-const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+
 const queryClient = new QueryClient({
     defaultOptions: {
         queries: {
@@ -95,9 +96,7 @@ export function Web3Provider({ children }) {
             try {
                 const address = window.ethereum?.selectedAddress || 'default';
                 console.log('[AUTH] Requesting nonce for:', address);
-                const response = await fetch(`${API_URL}/auth/nonce/${address}`);
-                if (!response.ok) throw new Error('Failed to fetch nonce');
-                const { nonce } = await response.json();
+                const { nonce } = await api.getNonce(address);
                 console.log('[AUTH] Nonce received:', nonce);
                 return nonce;
             } catch (error) {
@@ -136,21 +135,7 @@ export function Web3Provider({ children }) {
             console.log('[AUTH] verify called. message type:', typeof message);
             try {
                 setAuthStatus('loading');
-                const verifyRes = await fetch(`${API_URL}/auth/verify`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        message, // This is now a string from createMessage
-                        signature,
-                    }),
-                });
-
-                if (!verifyRes.ok) {
-                    const errorData = await verifyRes.json();
-                    throw new Error(errorData.error || 'Verification failed');
-                }
-
-                const data = await verifyRes.json();
+                const data = await api.verifySIWE(message, signature);
                 const ok = !!data.address;
                 setAuthStatus(ok ? 'authenticated' : 'unauthenticated');
                 return ok;

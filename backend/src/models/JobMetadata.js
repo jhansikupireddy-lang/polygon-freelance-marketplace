@@ -11,6 +11,9 @@ const jobMetadataSchema = new mongoose.Schema({
     ipfsHash: { type: String }, // Link to immutable contract details
     review: { type: String },
     rating: { type: Number },
+    client: { type: String, lowercase: true },
+    amount: { type: String },
+    deadline: { type: Number },
     milestones: [{
         amount: String,
         description: String,

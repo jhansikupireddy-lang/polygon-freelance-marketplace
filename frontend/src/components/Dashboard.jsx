@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useAccount, useReadContract, useSignMessage } from 'wagmi';
 import { useConnectModal } from '@rainbow-me/rainbowkit';
 import { Wallet, Briefcase, CheckCircle, Clock, Save, User, Award, PlusCircle, Sparkles, Send, Activity, Terminal } from 'lucide-react';
@@ -9,6 +9,8 @@ import LiveJobFeed from './LiveJobFeed';
 import AiRecommendations from './AiRecommendations';
 import WithdrawButton from './WithdrawButton';
 import YieldManagerDashboard from './YieldManagerDashboard';
+import { useAnimeAnimations } from '../hooks/useAnimeAnimations';
+import { animate, stagger } from 'animejs';
 
 function Dashboard({ address: propAddress }) {
     const { address: wagmiAddress, isConnected: isWagmiConnected } = useAccount();
@@ -17,6 +19,13 @@ function Dashboard({ address: propAddress }) {
 
     const { openConnectModal } = useConnectModal();
     const { signMessageAsync } = useSignMessage();
+
+    // Anime.js hooks
+    const { staggerFadeIn, scaleIn, float, countUp, bounceIn, magneticButton } = useAnimeAnimations();
+    const statsCardRef = useRef(null);
+    const reputationCardRef = useRef(null);
+    const commandCenterRef = useRef(null);
+    const primaryButtonRef = useRef(null);
 
     const [isLoadingProfile, setIsLoadingProfile] = React.useState(true);
     const [isLoadingAnalytics, setIsLoadingAnalytics] = React.useState(true);
@@ -49,12 +58,30 @@ function Dashboard({ address: propAddress }) {
             setIsLoadingProfile(true);
             setIsLoadingAnalytics(true);
             api.getProfile(address).then(data => {
-                if (data.address) setProfile(data);
-            }).finally(() => setIsLoadingProfile(false));
+                if (data && data.address) setProfile(data);
+            }).catch(err => console.warn('Profile fetch failed (backend may be down):', err.message))
+                .finally(() => setIsLoadingProfile(false));
 
             api.getAnalytics().then(data => {
                 if (data && data.totalJobs !== undefined) setAnalytics(data);
-            }).finally(() => setIsLoadingAnalytics(false));
+            }).catch(err => console.warn('Analytics fetch failed (backend may be down):', err.message))
+                .finally(() => setIsLoadingAnalytics(false));
+
+            // Animate stats cards
+            setTimeout(() => {
+                if (statsCardRef.current) {
+                    scaleIn(statsCardRef.current);
+                }
+                if (reputationCardRef.current) {
+                    scaleIn(reputationCardRef.current);
+                }
+                staggerFadeIn('.stat-item', 150);
+            }, 300);
+
+            // Animate command center
+            if (commandCenterRef.current) {
+                bounceIn(commandCenterRef.current);
+            }
         }
     }, [isConnected, address]);
 
@@ -123,7 +150,7 @@ function Dashboard({ address: propAddress }) {
     return (
         <div className="animate-fade space-y-20">
             {/* Zenith Command Center (Deployment Option) */}
-            <div className="lg:col-span-12">
+            <div className="lg:col-span-12" ref={commandCenterRef}>
                 <div className="glass-card p-8 bg-gradient-to-r from-[#0a0a0f] to-primary/5 border border-primary/20 relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 blur-[100px] -mr-32 -mt-32" />
 
@@ -227,7 +254,7 @@ function Dashboard({ address: propAddress }) {
             {/* Stats Cards Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-20">
                 {/* Active Contracts Card */}
-                <div className="glass-card group p-12 hover-glow">
+                <div className="glass-card group p-12 hover-glow" ref={statsCardRef}>
                     <div className="flex flex-col gap-6">
                         <div>
                             <p className="text-sm font-black text-text-dim uppercase tracking-[0.2em] mb-4">Active Contracts</p>
@@ -243,7 +270,7 @@ function Dashboard({ address: propAddress }) {
                 </div>
 
                 {/* Reputation Rank Card */}
-                <div className="glass-card group p-12 hover-glow relative overflow-hidden">
+                <div className="glass-card group p-12 hover-glow relative overflow-hidden" ref={reputationCardRef}>
                     {profile.reputationScore >= 10 && (
                         <div className="absolute top-0 right-0 p-6">
                             <div className="badge !bg-gradient-to-r !from-amber-400 !to-orange-500 !text-black !font-black !px-3 !py-1 !rounded-full shadow-2xl animate-pulse">

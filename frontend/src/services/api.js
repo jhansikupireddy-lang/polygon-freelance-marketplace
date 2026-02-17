@@ -8,52 +8,74 @@ const handleResponse = async (response) => {
     return response.json();
 };
 
+const safeFetch = async (url, options) => {
+    try {
+        const response = await fetch(url, options);
+        return await handleResponse(response);
+    } catch (error) {
+        console.error(`API Call failed: ${url}`, error.message);
+        // Throw a user-friendly error or a specific network error
+        if (error.message.includes('Failed to fetch')) {
+            throw new Error('Backend server is unreachable. Please ensure the backend is running on port 3001.');
+        }
+        throw error;
+    }
+};
+
 export const api = {
-    getProfile: (address) => fetch(`${API_URL}/profiles/${address}`).then(handleResponse),
+    getProfile: (address) => safeFetch(`${API_URL}/profiles/${address}`),
 
-    getNonce: (address) => fetch(`${API_URL}/auth/nonce/${address}`).then(handleResponse),
+    getNonce: (address) => safeFetch(`${API_URL}/auth/nonce/${address}`),
 
-    updateProfile: (data) => fetch(`${API_URL}/profiles`, {
+    updateProfile: (data) => safeFetch(`${API_URL}/profiles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
-    }).then(handleResponse),
+    }),
 
-    getLeaderboard: () => fetch(`${API_URL}/leaderboard`).then(handleResponse),
+    getLeaderboard: () => safeFetch(`${API_URL}/leaderboard`),
 
-    getPortfolio: (address) => fetch(`${API_URL}/portfolios/${address}`).then(handleResponse),
+    getPortfolio: (address) => safeFetch(`${API_URL}/portfolios/${address}`),
 
-    getJobsMetadata: () => fetch(`${API_URL}/jobs`).then(handleResponse),
+    getJobsMetadata: () => safeFetch(`${API_URL}/jobs`),
 
-    getJobMetadata: (jobId) => fetch(`${API_URL}/jobs/${jobId}`).then(handleResponse),
+    getJobMetadata: (jobId) => safeFetch(`${API_URL}/jobs/${jobId}`),
 
-    saveJobMetadata: (jobMetadata) => fetch(`${API_URL}/jobs`, {
+    saveJobMetadata: (jobMetadata) => safeFetch(`${API_URL}/jobs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(jobMetadata),
-    }).then(handleResponse),
+    }),
 
-    getAnalytics: () => fetch(`${API_URL}/analytics`).then(handleResponse),
+    getAnalytics: () => safeFetch(`${API_URL}/analytics`),
 
-    getMatchScore: (jobId, address) => fetch(`${API_URL}/match/${jobId}/${address}`).then(handleResponse),
+    getMatchScore: (jobId, address) => safeFetch(`${API_URL}/match/${jobId}/${address}`),
 
-    createStripeOnrampSession: (address) => fetch(`${API_URL}/stripe/create-onramp-session`, {
+    createStripeOnrampSession: (address) => safeFetch(`${API_URL}/stripe/create-onramp-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ address })
-    }).then(handleResponse),
+    }),
 
-    polishBio: (data) => fetch(`${API_URL}/profiles/polish-bio`, {
+    polishBio: (data) => safeFetch(`${API_URL}/profiles/polish-bio`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
-    }).then(handleResponse),
+    }),
 
-    getDisputes: () => fetch(`${API_URL}/disputes`).then(handleResponse),
-    analyzeDispute: (jobId) => fetch(`${API_URL}/disputes/${jobId}/analyze`, { method: 'POST' }).then(handleResponse),
-    resolveDispute: (jobId, data) => fetch(`${API_URL}/disputes/${jobId}/resolve`, {
+    getDisputes: () => safeFetch(`${API_URL}/disputes`),
+    analyzeDispute: (jobId) => safeFetch(`${API_URL}/disputes/${jobId}/analyze`, { method: 'POST' }),
+    resolveDispute: (jobId, data) => safeFetch(`${API_URL}/disputes/${jobId}/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
-    }).then(handleResponse),
+    }),
+
+    // Auth helpers for Smart Accounts and SIWE
+    getNonce: (address) => safeFetch(`${API_URL}/auth/nonce/${address}`),
+    verifySIWE: (message, signature) => safeFetch(`${API_URL}/auth/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, signature })
+    }),
 };

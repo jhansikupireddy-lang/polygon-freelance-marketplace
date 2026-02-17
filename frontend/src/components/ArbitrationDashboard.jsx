@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { Gavel, AlertTriangle, ShieldCheck, Scale, Cpu, Search, FileText, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Gavel, AlertTriangle, ShieldCheck, Scale, Cpu, Search, FileText, ChevronRight, Clock, Banknote } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useWriteContract, useReadContract } from 'wagmi';
 import FreelanceEscrowABI from '../contracts/FreelanceEscrow.json';
+import { formatEther } from 'viem';
 import CrossChainEscrowManagerABI from '../contracts/CrossChainEscrowManager.json';
 import { CONTRACT_ADDRESS, CROSS_CHAIN_ESCROW_MANAGER_ADDRESS } from '../constants';
 import { api } from '../services/api';
 import { toast } from 'react-toastify';
+import { useAnimeAnimations } from '../hooks/useAnimeAnimations';
+import { animate, stagger } from 'animejs';
 
 const ArbitrationDashboard = () => {
     const { address } = useAccount();
@@ -15,11 +18,16 @@ const ArbitrationDashboard = () => {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [loading, setLoading] = useState(true);
 
+    // Anime.js hooks
+    const { staggerFadeIn, slideInLeft, slideInRight, scaleIn, float, glitch, bounceIn, revealOnScroll } = useAnimeAnimations();
+    const headerRef = useRef(null);
+    const statsRef = useRef(null);
+
     const { data: arbitratorRole } = useReadContract({
         address: CONTRACT_ADDRESS,
         abi: FreelanceEscrowABI.abi,
         functionName: 'hasRole',
-        args: ['0x17766724054c72d2309727cfce08d551ff57400bc9f493926b6e319c54095112', address], // ARBITRATOR_ROLE
+        args: ['0x16ceee8289685dd2a02b9c8ae81d2df373176ce53519e6284e2a2950d6546ffa', address], // ARBITRATOR_ROLE
     });
 
     const isAdmin = arbitratorRole || false;
@@ -28,6 +36,21 @@ const ArbitrationDashboard = () => {
 
     useEffect(() => {
         fetchDisputes();
+
+        // Animate header on mount
+        if (headerRef.current) {
+            slideInLeft(headerRef.current);
+        }
+
+        // Animate dispute cards with stagger
+        setTimeout(() => {
+            staggerFadeIn('.dispute-card', 100);
+        }, 300);
+
+        // Setup scroll-based reveals
+        const cleanup = revealOnScroll('.glass-card');
+
+        return cleanup;
     }, []);
 
     const fetchDisputes = async () => {
@@ -56,7 +79,7 @@ const ArbitrationDashboard = () => {
 
     const handleResolution = async (jobId, bps, isCrossChain = false) => {
         try {
-            const ruling = bps === 100 ? 2 : (bps === 0 ? 1 : 3); // 1: Client, 2: Freelancer, 3: Split
+            const ruling = bps === 100 ? 3 : (bps === 0 ? 2 : 1); // 1: Split, 2: Client, 3: Freelancer
 
             if (isCrossChain) {
                 writeContract({
@@ -105,7 +128,7 @@ const ArbitrationDashboard = () => {
 
     return (
         <div className="container !p-0">
-            <header className="mb-12">
+            <header className="mb-12" ref={headerRef}>
                 <div className="flex items-center gap-4 mb-4">
                     <div className="p-3 rounded-2xl bg-rose-500/10 text-rose-500">
                         <Gavel size={32} />
@@ -134,7 +157,7 @@ const ArbitrationDashboard = () => {
                                 key={job.jobId}
                                 whileHover={{ x: 5 }}
                                 onClick={() => setSelectedJob(job)}
-                                className={`glass-card !p-5 cursor-pointer transition-all border-white/5 ${selectedJob?.jobId === job.jobId ? '!border-rose-500/50 bg-rose-500/5' : ''}`}
+                                className={`dispute-card glass-card !p-5 cursor-pointer transition-all border-white/5 ${selectedJob?.jobId === job.jobId ? '!border-rose-500/50 bg-rose-500/5' : ''}`}
                             >
                                 <div className="flex justify-between items-start mb-2">
                                     <span className="text-[10px] font-black p-1 bg-rose-500/20 text-rose-500 rounded uppercase">Case #{job.jobId}</span>
@@ -142,7 +165,7 @@ const ArbitrationDashboard = () => {
                                 </div>
                                 <h4 className="font-bold text-sm mb-1">{job.title}</h4>
                                 <div className="flex items-center justify-between mt-4">
-                                    <span className="text-[10px] text-text-dim font-bold uppercase tracking-widest">Budget: {job.amount || '0'}</span>
+                                    <span className="text-[10px] text-text-dim font-bold uppercase tracking-widest">Budget: {job.amount ? `${formatEther(job.amount)} POL` : '0'}</span>
                                     <ChevronRight size={14} className="text-text-dim" />
                                 </div>
                             </motion.div>
@@ -167,8 +190,31 @@ const ArbitrationDashboard = () => {
                                         <p className="text-xs text-text-muted">Parties: <span className="text-white">{selectedJob.client}</span> ↔ <span className="text-white">{selectedJob.freelancer}</span></p>
                                     </div>
                                     <div className="text-right">
-                                        <div className="text-[10px] font-black text-text-dim uppercase tracking-widest mb-1">External Court</div>
-                                        <span className="badge badge-info !bg-blue-500/20 !text-blue-400">Kleros Layer Waiting</span>
+                                        <div className="text-[10px] font-black text-text-dim uppercase tracking-widest mb-1">
+                                            {selectedJob.disputeData?.arbitrator === 'Internal' ? 'Internal Jury' : 'External Court'}
+                                        </div>
+                                        <span className={`badge ${selectedJob.disputeData?.arbitrator === 'Internal' ? '!bg-rose-500/20 !text-rose-400' : '!bg-blue-500/20 !text-blue-400'}`}>
+                                            {selectedJob.disputeData?.arbitrator === 'Internal' ? 'Protocol Arbitrator' : 'Kleros Layer Waiting'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+                                    <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                                        <div className="text-[10px] font-black text-text-dim uppercase tracking-widest mb-1 flex items-center gap-1.5"><Banknote size={10} /> Budget</div>
+                                        <div className="text-sm font-bold text-primary">{selectedJob.amount ? `${formatEther(selectedJob.amount)} POL` : '0'}</div>
+                                    </div>
+                                    <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                                        <div className="text-[10px] font-black text-text-dim uppercase tracking-widest mb-1 flex items-center gap-1.5"><Clock size={10} /> Deadline</div>
+                                        <div className="text-sm font-bold">{selectedJob.deadline ? new Date(selectedJob.deadline * 1000).toLocaleDateString() : 'N/A'}</div>
+                                    </div>
+                                    <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                                        <div className="text-[10px] font-black text-text-dim uppercase tracking-widest mb-1 flex items-center gap-1.5"><ShieldCheck size={10} /> Status</div>
+                                        <div className="text-sm font-bold text-rose-500">Disputed</div>
+                                    </div>
+                                    <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                                        <div className="text-[10px] font-black text-text-dim uppercase tracking-widest mb-1 flex items-center gap-1.5"><Scale size={10} /> Dispute ID</div>
+                                        <div className="text-sm font-bold">#{selectedJob.disputeData?.disputeId || 'N/A'}</div>
                                     </div>
                                 </div>
 

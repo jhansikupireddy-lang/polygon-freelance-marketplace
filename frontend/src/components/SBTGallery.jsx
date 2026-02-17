@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Award, Shield, CheckCircle, ExternalLink, Cpu, Zap, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useReadContract } from 'wagmi';
-import { FREELANCE_SBT_ADDRESS, COMPLETION_SBT_ADDRESS } from '../constants';
 import { api } from '../services/api';
 
 const SBT_ABI = [

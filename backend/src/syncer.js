@@ -59,6 +59,9 @@ export async function startSyncer() {
                             title: `Job #${jobId} (On-chain)`,
                             description: 'Metadata sync pending...',
                             category: 'General',
+                            client: clientAddr.toLowerCase(),
+                            amount: amount.toString(),
+                            deadline: Number(deadline),
                             freelancer: freelancer === '0x0000000000000000000000000000000000000000' ? null : freelancer.toLowerCase(),
                             status: freelancer === '0x0000000000000000000000000000000000000000' ? 0 : 1
                         });
@@ -135,6 +138,86 @@ export async function startSyncer() {
                     );
                 } catch (error) {
                     console.error('Error handling Dispute:', error);
+                }
+            }
+        }
+    });
+
+    // Watch for DisputeRaised (Internal/Manual)
+    client.watchEvent({
+        address: CONTRACT_ADDRESS,
+        event: parseAbiItem('event DisputeRaised(uint256 indexed jobId, uint256 disputeId)'),
+        onLogs: async (logs) => {
+            for (const log of logs) {
+                try {
+                    const { jobId, disputeId } = log.args;
+                    console.log(`Internal Dispute Raised: Job ${jobId}, ID ${disputeId}`);
+
+                    await JobMetadata.findOneAndUpdate(
+                        { jobId: Number(jobId) },
+                        {
+                            status: 3, // Disputed
+                            "disputeData.arbitrator": 'Internal',
+                            "disputeData.disputeId": Number(disputeId)
+                        }
+                    );
+                } catch (error) {
+                    console.error('Error handling DisputeRaised:', error);
+                }
+            }
+        }
+    });
+
+    // Watch for Ruling (Standard IArbitrator)
+    client.watchEvent({
+        address: CONTRACT_ADDRESS,
+        event: parseAbiItem('event Ruling(address indexed _arbitrator, uint256 indexed _disputeID, uint256 _ruling)'),
+        onLogs: async (logs) => {
+            for (const log of logs) {
+                try {
+                    const { _arbitrator, _disputeID, _ruling } = log.args;
+                    console.log(`Ruling Received: Arb ${_arbitrator}, ID ${_disputeID}, Ruling ${_ruling}`);
+
+                    const jobId = await client.readContract({
+                        address: CONTRACT_ADDRESS,
+                        abi: abi,
+                        functionName: 'disputeIdToJobId',
+                        args: [_disputeID]
+                    });
+
+                    await JobMetadata.findOneAndUpdate(
+                        { jobId: Number(jobId) },
+                        {
+                            status: Number(_ruling) === 3 ? 5 : 6, // 3: Freelancer wins -> Completed, else Cancelled
+                            "disputeData.ruling": Number(_ruling)
+                        }
+                    );
+                } catch (error) {
+                    console.error('Error handling Ruling:', error);
+                }
+            }
+        }
+    });
+
+    // Watch for DisputeResolved (Manual/Admin)
+    client.watchEvent({
+        address: CONTRACT_ADDRESS,
+        event: parseAbiItem('event DisputeResolved(uint256 indexed jobId, uint256 freelancerBps)'),
+        onLogs: async (logs) => {
+            for (const log of logs) {
+                try {
+                    const { jobId, freelancerBps } = log.args;
+                    console.log(`Dispute Manually Resolved: Job ${jobId}, BPS ${freelancerBps}`);
+
+                    await JobMetadata.findOneAndUpdate(
+                        { jobId: Number(jobId) },
+                        {
+                            status: Number(freelancerBps) > 5000 ? 5 : 6, // 5: Completed, 6: Cancelled
+                            "disputeData.manualBps": Number(freelancerBps)
+                        }
+                    );
+                } catch (error) {
+                    console.error('Error handling DisputeResolved:', error);
                 }
             }
         }

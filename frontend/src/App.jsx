@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import logo from './assets/logo.png';
-import { Briefcase, PlusCircle, LayoutDashboard, Ticket, MessageSquare, Trophy, User, Gavel, Cpu, Activity, Globe, BarChart3, Menu, X } from 'lucide-react';
+import { Briefcase, PlusCircle, LayoutDashboard, Ticket, MessageSquare, Trophy, User, Gavel, Cpu, Activity, Globe, BarChart3, Menu, X, Award, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Dashboard from './components/Dashboard';
 import CreateJob from './components/CreateJob';
@@ -20,7 +20,9 @@ import CreateCrossChainJob from './components/CreateCrossChainJob';
 import PrivacyCenter from './components/PrivacyCenter';
 import SBTGallery from './components/SBTGallery';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
+import AnimationShowcase from './components/AnimationShowcase';
 import { NotificationManager } from './components/NotificationManager';
+import AuthPortal from './components/AuthPortal';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { useAccount, useBalance, useWalletClient } from 'wagmi';
@@ -87,10 +89,7 @@ function App() {
 
       // Perform SIWE verification for the smart account
       const saAddress = sa.accountAddress;
-      const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-
-      const nonceRes = await fetch(`${API_URL}/auth/nonce/${saAddress}`);
-      const { nonce } = await nonceRes.json();
+      const { nonce } = await api.getNonce(saAddress);
 
       const message = new SiweMessage({
         domain: window.location.host,
@@ -103,17 +102,9 @@ function App() {
       });
 
       const signature = await sa.signMessage(message.prepareMessage());
+      const verifyData = await api.verifySIWE(message.prepareMessage(), signature);
 
-      const verifyRes = await fetch(`${API_URL}/auth/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: message.prepareMessage(),
-          signature,
-        }),
-      });
-
-      if (!verifyRes.ok) throw new Error("Backend verification failed");
+      if (!verifyData.ok) throw new Error("Backend verification failed");
 
       setSmartAccount(sa);
       setSocialProvider(particle);
@@ -157,8 +148,14 @@ function App() {
       case 'sbt': return <SBTGallery address={effectiveAddress} />;
       case 'terms': return <TermsOfService />;
       case 'privacy': return <PrivacyCenter address={effectiveAddress} />;
+      case 'showcase': return <AnimationShowcase />;
       default: return <Dashboard address={effectiveAddress} />;
     }
+  };
+
+  const onSelectChat = (addr) => {
+    setChatPeerAddress(addr);
+    setActiveTab('chat');
   };
 
   return (
@@ -187,20 +184,52 @@ function App() {
         </div>
 
         <nav className="sidebar-nav">
+          <div className="px-4 py-2 text-[10px] font-black tracking-widest text-text-muted uppercase opacity-50 mb-2">Core Access</div>
           {[
             { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
             { id: 'analytics', icon: BarChart3, label: 'Neural Stats' },
             { id: 'jobs', icon: Briefcase, label: 'Explorer' },
             { id: 'create', icon: PlusCircle, label: 'Create Gig' },
+          ].map(item => (
+            <button
+              key={item.id}
+              className={`nav-item ${activeTab === item.id ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab(item.id);
+                setIsSidebarOpen(false);
+              }}
+            >
+              <item.icon size={20} /> {item.label}
+            </button>
+          ))}
+
+          <div className="px-4 py-2 mt-4 text-[10px] font-black tracking-widest text-text-muted uppercase opacity-50 mb-2">Social & Justice</div>
+          {[
             { id: 'chat', icon: MessageSquare, label: 'Neural Chat' },
             { id: 'leaderboard', icon: Trophy, label: 'Hall of Fame' },
             { id: 'governance', icon: Cpu, label: 'Governance' },
             { id: 'manager', icon: Activity, label: 'Escrow Manager' },
             { id: 'justice', icon: Gavel, label: 'Justice' },
             { id: 'cross-chain', icon: Globe, label: 'Global Edge' },
+          ].map(item => (
+            <button
+              key={item.id}
+              className={`nav-item ${activeTab === item.id ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab(item.id);
+                setIsSidebarOpen(false);
+              }}
+            >
+              <item.icon size={20} /> {item.label}
+            </button>
+          ))}
+
+          <div className="px-4 py-2 mt-4 text-[10px] font-black tracking-widest text-text-muted uppercase opacity-50 mb-2">Vault & UI</div>
+          {[
             { id: 'nfts', icon: Ticket, label: 'Asset Vault' },
             { id: 'sbt', icon: Award, label: 'Identity Vault' },
             { id: 'privacy', icon: Shield, label: 'Privacy Center' },
+            { id: 'showcase', icon: Zap, label: 'Animations' },
           ].map(item => (
             <button
               key={item.id}
@@ -293,10 +322,10 @@ function App() {
               <button
                 onClick={handleSocialLogin}
                 disabled={isLoggingIn}
-                className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white font-bold text-xs transition-all shadow-lg shadow-primary/20"
+                className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white font-bold text-xs transition-all shadow-lg shadow-primary/20 border border-white/10"
               >
                 {isLoggingIn ? <div className="loading-spinner h-4 w-4" /> : <Mail size={16} />}
-                <span>{isLoggingIn ? "Initializing..." : "Google Login"}</span>
+                <span>{isLoggingIn ? "Verifying Identity..." : "Social Gateway"}</span>
               </button>
             )}
 
@@ -304,17 +333,29 @@ function App() {
           </div>
         </header>
 
-        <div className="content-area">
+        <div className="content-area pt-10">
           <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab + (portfolioAddress || '')}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.3, ease: 'easeOut' }}
-            >
-              {renderContent()}
-            </motion.div>
+            {!effectiveAddress && activeTab !== 'terms' && activeTab !== 'privacy' ? (
+              <motion.div
+                key="auth"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.05 }}
+                transition={{ duration: 0.4 }}
+              >
+                <AuthPortal onSocialLogin={handleSocialLogin} isLoggingIn={isLoggingIn} />
+              </motion.div>
+            ) : (
+              <motion.div
+                key={activeTab + (portfolioAddress || '')}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3, ease: 'easeOut' }}
+              >
+                {renderContent()}
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
 

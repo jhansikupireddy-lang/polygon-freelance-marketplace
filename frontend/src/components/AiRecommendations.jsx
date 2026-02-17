@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Sparkles, ArrowRight, Zap } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://localhost:3001/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://localhost:3001/api';
 
 /**
  * AiRecommendations Component

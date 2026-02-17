@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAccount, useWalletClient, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
 import { parseEther, parseUnits, erc20Abi } from 'viem';
 import { Send, Loader2, Info, CreditCard, Plus, Trash2, Calendar, Target, DollarSign, Cpu, Sparkles } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { initSocialLogin, createJobGasless } from '../utils/biconomy';
 import { showPendingToast, updateToastToSuccess, updateToastToError, handleError } from '../utils/feedback';
 import StripeOnrampModal from './StripeOnrampModal';
@@ -24,6 +25,7 @@ function CreateJob({ onJobCreated, gasless, smartAccount }) {
     const [yieldStrategy, setYieldStrategy] = useState(0); // 0: NONE, 1: AAVE, 2: COMPOUND, 3: MORPHO
     const [milestones, setMilestones] = useState([{ amount: '', description: '' }]);
     const [durationDays, setDurationDays] = useState('7');
+    const [activeIpfsHash, setActiveIpfsHash] = useState('');
     const [isApproving, setIsApproving] = useState(false);
     const [isStripeModalOpen, setIsStripeModalOpen] = useState(false);
     const [isProcessingGasless, setIsProcessingGasless] = useState(false);
@@ -74,6 +76,7 @@ function CreateJob({ onJobCreated, gasless, smartAccount }) {
                 title, description, category, client: address, freelancer, amount, token: selectedToken.symbol,
                 milestones: milestones.map(m => ({ amount: m.amount, description: m.description }))
             });
+            setActiveIpfsHash(ipfsHash);
         } catch (err) { console.error('IPFS failed:', err); }
 
         const currentTimestamp = Math.floor(Date.now() / 1000);
@@ -144,7 +147,7 @@ function CreateJob({ onJobCreated, gasless, smartAccount }) {
                 title,
                 description,
                 category,
-                ipfsHash: params.ipfsHash, // Use the hash from params
+                ipfsHash: activeIpfsHash, // Use the hash from state
                 milestones: milestones.filter(m => m.amount).map(m => ({
                     amount: m.amount,
                     description: m.description,
@@ -153,7 +156,7 @@ function CreateJob({ onJobCreated, gasless, smartAccount }) {
             })
                 .then(() => onJobCreated()).catch(err => { console.error(err); onJobCreated(); });
         }
-    }, [isSuccess, jobCount]);
+    }, [isSuccess, jobCount, activeIpfsHash]);
 
     return (
         <div className="animate-fade">

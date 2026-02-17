@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useReadContract, useWriteContract, useWatchContractEvent } from 'wagmi';
-import { Vote, Shield, Globe, Users, TrendingUp, Info, ChevronRight, Plus, Send, Zap, UserPlus, Scale, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Vote, Shield, Globe, Users, TrendingUp, Info, ChevronRight, Plus, Send, Zap, UserPlus, Scale, AlertTriangle, RefreshCw, Bell } from 'lucide-react';
 import { GOVERNANCE_ABI, REPUTATION_ABI, CROSS_CHAIN_GOVERNOR_ABI } from '../utils/daoABIs';
 import { GOVERNANCE_ADDRESS, REPUTATION_ADDRESS, CROSS_CHAIN_GOVERNOR_ADDRESS } from '../constants';
 import { toast } from 'react-toastify';
@@ -9,6 +9,7 @@ import { toast } from 'react-toastify';
 export default function DaoDashboard() {
     const { address } = useAccount();
     const [proposals, setProposals] = useState([]);
+    const [isCreating, setIsCreating] = useState(false);
     const [useQuadratic, setUseQuadratic] = useState(false);
     const [isOptimistic, setIsOptimistic] = useState(false);
     const [isSecret, setIsSecret] = useState(false);
@@ -363,6 +364,8 @@ export default function DaoDashboard() {
 
 function AdvancedProposalCard({ proposalId }) {
     const { writeContractAsync } = useWriteContract();
+    const [isHumanVerified, setIsHumanVerified] = useState(false);
+    const [notificationsEnabled, setNotificationsEnabled] = useState(false);
     const { data: proposal } = useReadContract({
         address: GOVERNANCE_ADDRESS,
         abi: GOVERNANCE_ABI,
