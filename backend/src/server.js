@@ -665,15 +665,19 @@ try {
     console.warn('Error loading SSL certs:', e.message);
 }
 
-if (httpsOptions) {
-    https.createServer(httpsOptions, app).listen(PORT, '0.0.0.0', () => {
-        console.log(`HTTPS Server running on port ${PORT}`);
-        console.log(`CORS allowed from: ${process.env.FRONTEND_URL || 'https://localhost:5173'}`);
-        startSyncer().catch(console.error);
-    });
-} else {
-    app.listen(PORT, '0.0.0.0', () => {
-        console.log(`HTTP Server running on port ${PORT}`);
-        startSyncer().catch(console.error);
-    });
+// Only start the server if running directly (not imported by Vercel)
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+    if (httpsOptions) {
+        https.createServer(httpsOptions, app).listen(PORT, '0.0.0.0', () => {
+            console.log(`HTTPS Server running on port ${PORT}`);
+            console.log(`CORS allowed from: ${process.env.FRONTEND_URL || 'https://localhost:5173'}`);
+            startSyncer().catch(console.error);
+        });
+    } else {
+        app.listen(PORT, '0.0.0.0', () => {
+            console.log(`HTTP Server running on port ${PORT}`);
+            startSyncer().catch(console.error);
+        });
+    }
 }
+export default app;
