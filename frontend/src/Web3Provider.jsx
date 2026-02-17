@@ -58,7 +58,7 @@ export function Web3Provider({ children }) {
         console.log('[NETWORK] Current App Origin:', window.location.origin);
     }, []);
 
-    const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || '65a5f1dd3b7df21cef34448cac019cd5';
+    const projectId = import.meta.env.VITE_WALLET_CONNECT_PROJECT_ID || '65a5f1dd3b7df21cef34448cac019cd5';
 
     const config = useMemo(() => {
         const alchemyId = import.meta.env.VITE_ALCHEMY_ID;

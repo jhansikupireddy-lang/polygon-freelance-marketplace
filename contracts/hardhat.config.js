@@ -1,5 +1,4 @@
 require("@nomicfoundation/hardhat-toolbox");
-require("@nomicfoundation/hardhat-ethers");
 require("@openzeppelin/hardhat-upgrades");
 require("dotenv").config();
 require("solidity-coverage");
@@ -32,7 +31,7 @@ module.exports = {
     networks: {
         hardhat: {
             allowUnlimitedContractSize: true,
-            hardfork: "shanghai"
+            hardfork: "cancun"
         },
         localhost: {
             url: "http://127.0.0.1:8545",
